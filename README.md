@@ -83,6 +83,7 @@ See [AGENTS.md](AGENTS.md) for changelog and unit-test rules, and [MILESTONES.md
 - Grid: select a horizontal loop, Shift+Alt+R, vertices travel on vertical rails.
 - Right/Front/Top ortho: free rotation is around the view axis (same as `R`).
 - Press `X` / `Y` / `Z` while dragging; header follows View → orientation → Global/Local.
+- Axis lock still follows the mouse after orbiting 180° around the model (same as native `R`).
 - Active Element pivot: the active vertex stays put.
 - `C` clamps to the physical rail; default extend continues past the edge.
 - Object with rotation and non-uniform scale still follows world-space rails.

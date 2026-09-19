@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from .types import AxisLockState
-from .vec import Mat3, Vec3, column, identity_mat3, normalize
+from .vec import Mat3, Vec3, column, dot, identity_mat3, normalize, sub
 
 _AXIS_INDEX = {"X": 0, "Y": 1, "Z": 2}
 
@@ -53,6 +53,40 @@ def locked_axis_vector(
         matrix = identity_mat3()
     axis = normalize(column(matrix, index))
     return axis if axis is not None else (0.0, 0.0, 1.0)
+
+
+def view_toward_camera(
+    view_axis: Vec3,
+    pivot: Vec3,
+    camera_location: Vec3 | None,
+    perspective: bool,
+) -> Vec3:
+    """Unit vector from the pivot toward the camera (out of the screen)."""
+    fallback = normalize(view_axis)
+    if fallback is None:
+        fallback = (0.0, 0.0, 1.0)
+    if perspective and camera_location is not None:
+        toward = normalize(sub(camera_location, pivot))
+        if toward is not None:
+            return toward
+    return fallback
+
+
+def mouse_angle_axis_sign(axis: Vec3, view_toward: Vec3) -> float:
+    """Map screen-space CCW onto a lock axis so the mouse still follows.
+
+    Unconstrained rotation uses the view axis (toward the camera), so +atan2 is
+    CCW on screen. When the lock axis points the other way, the same gesture
+    would run backwards unless the mouse angle is flipped — same idea as native
+    R axis constraint.
+    """
+    unit_axis = normalize(axis)
+    unit_view = normalize(view_toward)
+    if unit_axis is None or unit_view is None:
+        return 1.0
+    if dot(unit_axis, unit_view) < 0.0:
+        return -1.0
+    return 1.0
 
 
 def _orientation_title(orientation_name: str) -> str:

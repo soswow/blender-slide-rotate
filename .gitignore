@@ -5,3 +5,4 @@ __pycache__/
 .mypy_cache/
 *.zip
 .DS_Store
+initial-ai-generated-requirements.md

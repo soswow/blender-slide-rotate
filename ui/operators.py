@@ -8,7 +8,13 @@ from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty
 from bpy_extras import view3d_utils
 from mathutils import Matrix, Vector
 
-from ..core.axis import lock_label, locked_axis_vector, press_axis_key
+from ..core.axis import (
+    lock_label,
+    locked_axis_vector,
+    mouse_angle_axis_sign,
+    press_axis_key,
+    view_toward_camera,
+)
 from ..core.geometry import apply_vertex_theta, build_vertex_state, transformed_world
 from ..core.input import (
     apply_precision,
@@ -199,6 +205,8 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
             self._axis_state = state
             self.lock_letter = state.letter if state.letter is not None else "NONE"
             self.lock_stage = state.stage
+            if not self._numeric.active:
+                self.angle = self._theta_from_mouse(context, event)
             self._apply(context)
             self._update_header(context)
             return {"RUNNING_MODAL"}
@@ -302,6 +310,23 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
             self._local_matrix,
         )
 
+    def _view_toward_camera(self, context: bpy.types.Context) -> Vec3:
+        rv3d = context.region_data
+        camera_location = None
+        perspective = False
+        if rv3d is not None:
+            perspective = bool(getattr(rv3d, "is_perspective", False))
+            try:
+                camera_location = _vec(rv3d.view_matrix.inverted().translation)
+            except ValueError:
+                camera_location = None
+        return view_toward_camera(
+            self._view_axis,
+            self._pivot,
+            camera_location,
+            perspective,
+        )
+
     def _theta_from_mouse(self, context: bpy.types.Context, event: bpy.types.Event) -> float:
         precision = bool(event.shift)
         snap = bool(event.ctrl)
@@ -324,6 +349,11 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
             else:
                 delta = wrap_angle_delta(self._initial_screen_angle, current)
                 theta = apply_precision(delta, precision)
+        if self._axis_state.stage != 0 and self._axis_state.letter is not None:
+            theta *= mouse_angle_axis_sign(
+                self._current_axis(),
+                self._view_toward_camera(context),
+            )
         if increment is not None:
             theta = snap_angle(theta, increment)
         return theta

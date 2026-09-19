@@ -13,3 +13,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - View-plane rotation like native R, including orthogonal views, with X/Y/Z axis lock cycling (current orientation, then Global/Local, then back to View).
 - Extend Rails on by default, toggle Clamp with C, Shift precision, Ctrl angle snap, simple typed-degree input, and a modal rail overlay.
 - Redo Last properties for angle, extend rails, and axis lock.
+
+### Fixed
+- Axis-locked rotation follows the mouse after orbiting to the other side of the model, like native R.

@@ -30,5 +30,4 @@ paths_exclude_pattern = [
   "/CHANGELOG.md",
   "/MILESTONES.md",
   "/requirements-dev.txt",
-  "/initial-ai-generated-requirements.md",
 ]
