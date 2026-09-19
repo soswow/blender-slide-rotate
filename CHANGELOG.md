@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-19
+
 ### Added
 - GitHub Release zip from `./scripts/release.sh` (tagged `v*` builds via Actions).
 - Face-interior vertices borrow through-rails from the coplanar face so they slide with the boundary instead of along in-face edges.
@@ -21,3 +23,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Axis-locked rotation follows the mouse after orbiting to the other side of the model, like native R.
+
