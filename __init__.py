@@ -23,7 +23,7 @@ bl_info = {
     "version": (0, 1, 0),
     "blender": (5, 1, 0),
     "location": "Mesh Edit Mode > Shift+Alt+R",
-    "description": "Rotate or scale a selection around the pivot while vertices slide on connected edges",
+    "description": "Rotate, scale, or flatten a selection while vertices slide on connected edges",
     "category": "Mesh",
 }
 

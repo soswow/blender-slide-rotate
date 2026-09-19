@@ -6,7 +6,7 @@ import math
 
 from dataclasses import dataclass
 
-from .types import MODE_ROTATE, MODE_SCALE, NumericInput
+from .types import MODE_FLATTEN, MODE_ROTATE, MODE_SCALE, NumericInput
 
 # Status-bar chips during the modal (icon names match bpy UILayout icons).
 # Python cannot register a Blender modal keymap, so we draw these ourselves.
@@ -220,6 +220,13 @@ def format_status_text(
             value_part = f"Scale: {shown}"
         else:
             value_part = f"Scale: {factor:.3f}"
+    elif mode == MODE_FLATTEN:
+        title = "Slide Flatten"
+        if numeric.active:
+            shown = numeric.text if numeric.text else "0"
+            value_part = f"Flatten: {shown}"
+        else:
+            value_part = f"Flatten: {factor:.3f}"
     else:
         title = "Slide Rotate"
         degrees = math.degrees(angle)

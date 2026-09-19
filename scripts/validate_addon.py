@@ -125,6 +125,50 @@ def _assert_scale_along_radial_rails() -> None:
     bpy.ops.object.mode_set(mode="OBJECT")
 
 
+def _assert_flatten_along_normal_rails() -> None:
+    """Lifted vert with a Z rail lands on Z=0 at flatten factor 1 with Z lock."""
+    mesh = bpy.data.meshes.new("slide_flatten_probe")
+    obj = bpy.data.objects.new("slide_flatten_probe", mesh)
+    bpy.context.collection.objects.link(obj)
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    builder = bmesh.new()
+    coords = ((0.0, 0.0, 0.0), (0.0, 0.0, 2.0), (2.0, 0.0, 0.0), (2.0, 2.0, 0.0))
+    verts = [builder.verts.new(coord) for coord in coords]
+    builder.edges.new((verts[0], verts[1]))
+    builder.faces.new((verts[0], verts[2], verts[3]))
+    builder.to_mesh(mesh)
+    builder.free()
+
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.context.tool_settings.mesh_select_mode = (True, False, False)
+    bpy.context.tool_settings.transform_pivot_point = "CURSOR"
+    bpy.context.scene.cursor.location = (0.0, 0.0, 0.0)
+    edit_mesh = bmesh.from_edit_mesh(mesh)
+    edit_mesh.select_mode = {"VERT"}
+    edit_mesh.verts.ensure_lookup_table()
+    for vert in edit_mesh.verts:
+        vert.select = abs(vert.co.z - 2.0) < 1e-8
+    bmesh.update_edit_mesh(mesh)
+
+    bpy.ops.mesh.slide_rotate(
+        mode="FLATTEN",
+        factor=1.0,
+        extend_rails=True,
+        lock_letter="Z",
+        lock_stage=1,
+    )
+    edit_mesh = bmesh.from_edit_mesh(mesh)
+    edit_mesh.verts.ensure_lookup_table()
+    lifted = next(vert for vert in edit_mesh.verts if vert.select)
+    assert abs(float(lifted.co.x)) < 1e-5
+    assert abs(float(lifted.co.y)) < 1e-5
+    assert abs(float(lifted.co.z)) < 1e-5
+    bpy.ops.object.mode_set(mode="OBJECT")
+    bpy.context.tool_settings.transform_pivot_point = "MEDIAN_POINT"
+    bpy.context.scene.cursor.location = (0.0, 0.0, 0.0)
+
+
 def _build_loop_with_rails() -> bpy.types.Object:
     mesh = bpy.data.meshes.new("slide_rotate_probe")
     obj = bpy.data.objects.new("slide_rotate_probe", mesh)
@@ -209,6 +253,9 @@ def main() -> None:
         assert not MESH_OT_slide_rotate.poll(bpy.context)
 
         _assert_scale_along_radial_rails()
+        assert not MESH_OT_slide_rotate.poll(bpy.context)
+
+        _assert_flatten_along_normal_rails()
         assert not MESH_OT_slide_rotate.poll(bpy.context)
 
         extension.unregister()

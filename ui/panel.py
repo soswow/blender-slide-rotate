@@ -22,6 +22,8 @@ class VIEW3D_PT_slide_rotate(bpy.types.Panel):
         rotate.mode = "ROTATE"
         scale = column.operator("mesh.slide_rotate", text="Slide Scale", icon="FULLSCREEN_ENTER")
         scale.mode = "SCALE"
+        flatten = column.operator("mesh.slide_rotate", text="Slide Flatten", icon="MESH_PLANE")
+        flatten.mode = "FLATTEN"
         from .. import is_dev_install
 
         if is_dev_install():

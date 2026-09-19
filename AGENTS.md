@@ -33,7 +33,7 @@ To ship: `./scripts/release.sh 0.1.0` on a clean `main` with a GitHub `origin` r
 
 Strict, not optional.
 
-- **Every new behavior ships with unit tests in the same change.** Geometry, rail scoring, polar solve, fallback, clamp, axis-lock cycling, mouse-angle wrap, precision, snap, numeric parsing, world↔local, status text. If a function is worth writing, it is worth a pytest. Keep that logic in `core/` so tests run without Blender.
+- **Every new behavior ships with unit tests in the same change.** Geometry, rail scoring, polar solve, fallback, clamp, axis-lock cycling, mouse-angle wrap, precision, snap, numeric parsing, world↔local, status text, flatten plane fit. If a function is worth writing, it is worth a pytest. Keep that logic in `core/` so tests run without Blender.
 - **Every new bug gets a regression test that fails before the fix and passes after.** Reproduce with the smallest numeric fixture (points, rails, axis, theta). Do not patch and move on. If a regression is truly impractical (live GPU handler, window event timing), say why in the handoff **and** still extract the logic so the next similar bug can be unit-tested.
 - Run `pytest` before calling a milestone done. `scripts/validate_addon.py` covers registration, keymap, poll, execute, and reload — it does not replace unit tests.
 - Do not special-case a user `.blend` in tests. Use generic synthetic geometry.
@@ -49,7 +49,7 @@ Strict, not optional.
 | Area | Path |
 | --- | --- |
 | Vectors / matrices | `core/vec.py` |
-| Rail solve, clamp, overlay segments | `core/geometry.py` |
+| Rail solve, clamp, overlay segments, flatten plane | `core/geometry.py` |
 | X/Y/Z lock cycling, view-follow mouse sign | `core/axis.py` |
 | Mouse angle, snap, numeric input, status text | `core/input.py` |
 | Pivots, world↔local | `core/transforms.py` |
@@ -71,7 +71,9 @@ Axis lock (rotate): the same screen angle, applied around world/orientation X/Y/
 
 Unconstrained scale: screen projection of the mouse onto the invoke radial around the pivot (`screen_scale_factor`). Crossing the pivot mirrors (negative factor), like native `S`. Do **not** apply `mouse_angle_axis_sign`. Axis lock scales only along that axis, then projects onto the rail.
 
-Do **not** flip typed degrees, typed scale factors, or Redo Last (`execute` applies `self.angle` / `self.factor` around the canonical lock axis).
+Flatten: same screen radial as scale (`screen_scale_factor`). Invoke is factor 1 (fully on the plane, like Loop Tools applying immediately). Drag toward the pivot to ease off; 0 is the start pose. Do **not** apply `mouse_angle_axis_sign`. Typed `1` and Redo Last / `execute` with `factor=1` are full flatten. Rails score against the plane normal (best-fit, or the lock axis through the pivot).
+
+Do **not** flip typed degrees, typed scale factors, typed flatten factors, or Redo Last (`execute` applies `self.angle` / `self.factor` around the canonical lock axis / flatten plane).
 
 Rails and the polar/scale solve in `core/geometry.py` are view-independent. “Lock follows the mouse on one side only” is the rotate sign, not the solver. Rails are chosen once at invoke for the then-current axis and mode.
 
@@ -79,6 +81,7 @@ Rails and the polar/scale solve in `core/geometry.py` are view-independent. “L
 | --- | --- |
 | Unconstrained OK, lock reversed after orbit | `mouse_angle_axis_sign`, `_theta_from_mouse` |
 | Scale reversed after orbit | should not happen; check `_factor_from_mouse` |
+| Flatten reversed after orbit | should not happen; check `_factor_from_mouse` |
 | Nothing moves | rails / freeze / whole mesh selected; scale on a tangent-only loop |
 | Wrong in Top/Front/Right unconstrained | `_view_axis` |
 | Keymap / reload / poll | `__init__.py`, `scripts/validate_addon.py` |

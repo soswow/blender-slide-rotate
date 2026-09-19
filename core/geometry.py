@@ -1,8 +1,9 @@
-"""Rail selection and slide solve for rotate and scale (no bpy).
+"""Rail selection and slide solve for rotate, scale, and flatten (no bpy).
 
 Each selected vertex is locked to one cached guide rail. Rotate shares an
 angle ``theta`` around a pivot/axis. Scale shares a factor from the pivot.
-Both write a parameter ``t`` along the same cached rail.
+Flatten shares a factor toward a plane (0 = start pose, 1 = on the plane).
+All three write a parameter ``t`` along the same cached rail.
 """
 
 from __future__ import annotations
@@ -10,9 +11,10 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from .types import MODE_ROTATE, MODE_SCALE, Rail, VertexRailState
+from .types import MODE_FLATTEN, MODE_ROTATE, MODE_SCALE, Rail, VertexRailState
 from .vec import (
     EPS,
+    Mat3,
     Vec3,
     add,
     almost_equal,
@@ -20,6 +22,7 @@ from .vec import (
     dot,
     length,
     length_squared,
+    lerp,
     normalize,
     plane_basis,
     project_to_plane,
@@ -75,7 +78,10 @@ def rail_score_direction(
     Rotate scores against the rotational tangent in the plane of ``axis``.
     Scale scores against the 3D radial from the pivot, or against the lock
     axis once X/Y/Z is active (native S then only moves along that axis).
+    Flatten scores against the plane normal (``axis`` is that normal).
     """
+    if mode == MODE_FLATTEN:
+        return normalize(axis)
     if mode == MODE_SCALE:
         if axis_locked:
             return normalize(axis)
@@ -100,6 +106,107 @@ def unconstrained_scaled_point(
     along = dot(radial, unit)
     rest = sub(radial, scale(unit, along))
     return add(pivot, add(scale(unit, along * factor), rest))
+
+
+def unconstrained_flattened_point(
+    original: Vec3,
+    plane_origin: Vec3,
+    plane_normal: Vec3,
+    factor: float,
+) -> Vec3:
+    """Lerp from the start pose toward the closest point on the flatten plane."""
+    return lerp(original, project_to_plane(original, plane_origin, plane_normal), factor)
+
+
+def _symmetric_eigensystem_3(matrix: Mat3) -> tuple[tuple[float, float, float], tuple[Vec3, Vec3, Vec3]]:
+    """Jacobi eigenvalues (ascending) and matching eigenvectors of a 3x3 symmetric matrix."""
+    a = [list(row) for row in matrix]
+    vectors = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+    for _ in range(50):
+        off_max = 0.0
+        p_index = 0
+        q_index = 1
+        for i_index, j_index in ((0, 1), (0, 2), (1, 2)):
+            value = abs(a[i_index][j_index])
+            if value > off_max:
+                off_max = value
+                p_index, q_index = i_index, j_index
+        if off_max <= 1e-12:
+            break
+        app = a[p_index][p_index]
+        aqq = a[q_index][q_index]
+        apq = a[p_index][q_index]
+        diff = aqq - app
+        if abs(apq) <= abs(diff) * 1e-12:
+            tangent = apq / diff if abs(diff) > EPS else 0.0
+        else:
+            phi = 0.5 * diff / apq
+            tangent = 1.0 / (abs(phi) + math.sqrt(phi * phi + 1.0))
+            if phi < 0.0:
+                tangent = -tangent
+        cosine = 1.0 / math.sqrt(tangent * tangent + 1.0)
+        sine = tangent * cosine
+        for k_index in range(3):
+            if k_index in {p_index, q_index}:
+                continue
+            aik = a[k_index][p_index]
+            aiq = a[k_index][q_index]
+            a[k_index][p_index] = a[p_index][k_index] = cosine * aik - sine * aiq
+            a[k_index][q_index] = a[q_index][k_index] = sine * aik + cosine * aiq
+        a[p_index][p_index] = cosine * cosine * app - 2.0 * sine * cosine * apq + sine * sine * aqq
+        a[q_index][q_index] = sine * sine * app + 2.0 * sine * cosine * apq + cosine * cosine * aqq
+        a[p_index][q_index] = a[q_index][p_index] = 0.0
+        for k_index in range(3):
+            vip = vectors[k_index][p_index]
+            viq = vectors[k_index][q_index]
+            vectors[k_index][p_index] = cosine * vip - sine * viq
+            vectors[k_index][q_index] = sine * vip + cosine * viq
+    ranked = sorted(((a[index][index], index) for index in range(3)), key=lambda item: item[0])
+    values = (ranked[0][0], ranked[1][0], ranked[2][0])
+    axes = tuple(
+        (vectors[0][column], vectors[1][column], vectors[2][column]) for _value, column in ranked
+    )
+    return values, axes
+
+
+def best_fit_plane(points: list[Vec3]) -> tuple[Vec3, Vec3] | None:
+    """Least-squares plane ``(centroid, unit_normal)``, or None if coincident/collinear.
+
+    The normal is the covariance eigenvector of smallest eigenvalue, the same
+    fit Loop Tools Flatten uses before projecting vertices.
+    """
+    if len(points) < 3:
+        return None
+    count = float(len(points))
+    origin = (
+        sum(point[0] for point in points) / count,
+        sum(point[1] for point in points) / count,
+        sum(point[2] for point in points) / count,
+    )
+    xx = xy = xz = yy = yz = zz = 0.0
+    for point in points:
+        dx, dy, dz = sub(point, origin)
+        xx += dx * dx
+        xy += dx * dy
+        xz += dx * dz
+        yy += dy * dy
+        yz += dy * dz
+        zz += dz * dz
+    values, axes = _symmetric_eigensystem_3(
+        (
+            (xx, xy, xz),
+            (xy, yy, yz),
+            (xz, yz, zz),
+        )
+    )
+    if values[2] <= EPS:
+        return None
+    if values[1] <= values[2] * 1e-8 + EPS:
+        return None
+    normal = normalize(axes[0])
+    if normal is None:
+        return None
+    return origin, normal
 
 
 def polar_angle(point: Vec3, pivot: Vec3, axis: Vec3) -> float | None:
@@ -261,6 +368,60 @@ def apply_vertex_scale(
     return state
 
 
+def solve_flatten_rail_parameter(
+    plane_origin: Vec3,
+    plane_normal: Vec3,
+    factor: float,
+    original: Vec3,
+    rail: Rail,
+) -> tuple[float, bool]:
+    """Return ``(t, used_fallback)`` for one vertex at flatten ``factor``.
+
+    Preferred: intersect the rail with the plane that interpolates the vertex's
+    signed distance (factor 1 lands on the flatten plane). Fallback: closest
+    point of the unconstrained lerp when the rail is parallel to the plane.
+    """
+    target = unconstrained_flattened_point(original, plane_origin, plane_normal, factor)
+    fallback_t = project_t_on_rail(target, rail)
+    unit = normalize(plane_normal)
+    if unit is None:
+        return fallback_t, True
+    denom = dot(rail.direction, unit)
+    if abs(denom) < PARALLEL_EPS:
+        return fallback_t, True
+    original_distance = dot(sub(original, plane_origin), unit)
+    target_distance = original_distance * (1.0 - factor)
+    t_value = (target_distance - dot(sub(rail.origin, plane_origin), unit)) / denom
+    if not math.isfinite(t_value) or abs(t_value) > MAX_ABS_T:
+        return fallback_t, True
+    return t_value, False
+
+
+def apply_vertex_flatten(
+    state: VertexRailState,
+    plane_origin: Vec3,
+    plane_normal: Vec3,
+    factor: float,
+    extend_rails: bool,
+) -> VertexRailState:
+    """Recompute one vertex from its original pose plus the shared flatten factor."""
+    if not state.movable or state.rail is None:
+        state.last_t = 0.0
+        state.used_fallback = False
+        return state
+    t_value, used_fallback = solve_flatten_rail_parameter(
+        plane_origin,
+        plane_normal,
+        factor,
+        state.original_world,
+        state.rail,
+    )
+    t_value = clamp_t(t_value, state.rail, extend_rails)
+    state.last_t = t_value
+    state.used_fallback = used_fallback
+    return state
+
+
 def apply_vertex_slide(
     state: VertexRailState,
     pivot: Vec3,
@@ -269,7 +430,11 @@ def apply_vertex_slide(
     extend_rails: bool,
     mode: str,
     axis_locked: bool,
+    plane_origin: Vec3 | None = None,
 ) -> VertexRailState:
+    if mode == MODE_FLATTEN:
+        origin = plane_origin if plane_origin is not None else pivot
+        return apply_vertex_flatten(state, origin, axis, value, extend_rails)
     if mode == MODE_SCALE:
         return apply_vertex_scale(state, pivot, axis, value, extend_rails, axis_locked)
     return apply_vertex_theta(state, pivot, axis, value, extend_rails)
@@ -426,7 +591,7 @@ def build_vertex_state(
     mode: str = MODE_ROTATE,
     axis_locked: bool = False,
 ) -> VertexRailState:
-    if is_near_pivot(world, pivot):
+    if mode != MODE_FLATTEN and is_near_pivot(world, pivot):
         return VertexRailState(
             index=index,
             original_world=world,

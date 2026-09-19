@@ -16,7 +16,7 @@ from ..core.axis import (
     press_axis_key,
     view_toward_camera,
 )
-from ..core.geometry import apply_vertex_slide, build_vertex_state, transformed_world
+from ..core.geometry import apply_vertex_slide, best_fit_plane, build_vertex_state, transformed_world
 from ..core.input import (
     DEFAULT_PRECISION_SNAP_SCALE,
     DEFAULT_SNAP_SCALE,
@@ -36,7 +36,7 @@ from ..core.input import (
     wrap_angle_delta,
 )
 from ..core.transforms import choose_pivot, local_from_world, world_from_local
-from ..core.types import MODE_ROTATE, MODE_SCALE, AxisLockState, NumericInput, VertexRailState
+from ..core.types import MODE_FLATTEN, MODE_ROTATE, MODE_SCALE, AxisLockState, NumericInput, VertexRailState
 from ..core.vec import Mat3, Mat4, Vec3, identity_mat3, invert_affine_mat4, normalize
 from . import overlay
 
@@ -178,14 +178,14 @@ def _orientation_matrix(context: bpy.types.Context, bm: bmesh.types.BMesh, matri
 
 
 class MESH_OT_slide_rotate(bpy.types.Operator):
-    """Rotate or scale the selection around the pivot while vertices slide on connected rails."""
+    """Rotate, scale, or flatten the selection while vertices slide on connected rails."""
 
     bl_idname = "mesh.slide_rotate"
     bl_label = "Slide"
     bl_options = {"REGISTER", "UNDO", "GRAB_CURSOR", "BLOCKING"}
     bl_description = (
-        "Rotate or scale selected vertices around the transform pivot while each "
-        "vertex slides along an automatically chosen connected edge"
+        "Rotate, scale, or flatten selected vertices while each vertex slides "
+        "along an automatically chosen connected edge"
     )
 
     mode: EnumProperty(
@@ -193,6 +193,7 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
         items=(
             (MODE_ROTATE, "Rotate", "Rotate around the pivot like native R"),
             (MODE_SCALE, "Scale", "Scale from the pivot like native S"),
+            (MODE_FLATTEN, "Flatten", "Flatten onto a plane like Loop Tools, along rails"),
         ),
         default=MODE_ROTATE,
     )
@@ -204,7 +205,7 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
     )
     factor: FloatProperty(
         name="Scale",
-        description="Shared scale factor from the pivot",
+        description="Shared scale or flatten factor",
         default=1.0,
     )
     extend_rails: BoolProperty(
@@ -235,6 +236,8 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
         layout.prop(self, "mode")
         if self.mode == MODE_SCALE:
             layout.prop(self, "factor")
+        elif self.mode == MODE_FLATTEN:
+            layout.prop(self, "factor", text="Flatten")
         else:
             layout.prop(self, "angle")
         layout.prop(self, "extend_rails")
@@ -282,6 +285,9 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
         overlay.ensure_draw_handler()
         context.window.cursor_modal_set("SCROLL_XY")
         context.window_manager.modal_handler_add(self)
+        # Flatten identity is factor 1 (on the plane); apply once so invoke
+        # matches Loop Tools instead of waiting for the first mouse move.
+        self._apply(context)
         self._set_status_bar(context)
         self._update_header(context)
         context.area.tag_redraw()
@@ -386,6 +392,22 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
             self.report({"ERROR"}, "Could not determine transform pivot")
             return False
         self._pivot = pivot
+        rail_axis = axis
+        if self.mode == MODE_FLATTEN:
+            if self._axis_locked():
+                self._plane_origin = pivot
+                self._plane_normal = axis
+            else:
+                fitted = best_fit_plane(worlds)
+                if fitted is None:
+                    self._plane_origin = pivot
+                    self._plane_normal = self._view_axis
+                else:
+                    self._plane_origin, self._plane_normal = fitted
+            rail_axis = self._plane_normal
+        else:
+            self._plane_origin = pivot
+            self._plane_normal = axis
         states: list[VertexRailState] = []
         selected_ids = {vert.index for vert in selected}
         for vert in selected:
@@ -405,7 +427,7 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
                     world,
                     neighbors,
                     pivot,
-                    axis,
+                    rail_axis,
                     borrowed,
                     mode=self.mode,
                     axis_locked=self._axis_locked(),
@@ -420,26 +442,31 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
         return self._axis_state.stage != 0 and self._axis_state.letter is not None
 
     def _slide_value(self) -> float:
-        if self.mode == MODE_SCALE:
+        if self.mode in {MODE_SCALE, MODE_FLATTEN}:
             return float(self.factor)
         return float(self.angle)
 
     def _set_value(self, value: float) -> None:
-        if self.mode == MODE_SCALE:
+        if self.mode in {MODE_SCALE, MODE_FLATTEN}:
             self.factor = value
         else:
             self.angle = value
 
     def _typed_value(self) -> float | None:
-        if self.mode == MODE_SCALE:
+        if self.mode in {MODE_SCALE, MODE_FLATTEN}:
             return numeric_value_number(self._numeric)
         return numeric_value_radians(self._numeric)
 
     def _set_value_from_mouse(self, context: bpy.types.Context, event: bpy.types.Event) -> None:
-        if self.mode == MODE_SCALE:
+        if self.mode in {MODE_SCALE, MODE_FLATTEN}:
             self.factor = self._factor_from_mouse(context, event)
         else:
             self.angle = self._theta_from_mouse(context, event)
+
+    def _axis_status_label(self) -> str:
+        if self.mode == MODE_FLATTEN and not self._axis_locked():
+            return "Best Fit"
+        return lock_label(self._axis_state, self._orientation_name)
 
     def _current_axis(self) -> Vec3:
         return locked_axis_vector(
@@ -536,7 +563,12 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
         obj = context.edit_object
         bm = bmesh.from_edit_mesh(obj.data)
         bm.verts.ensure_lookup_table()
-        axis = self._current_axis()
+        if self.mode == MODE_FLATTEN:
+            axis = self._plane_normal
+            plane_origin = self._plane_origin
+        else:
+            axis = self._current_axis()
+            plane_origin = self._pivot
         value = self._slide_value()
         axis_locked = self._axis_locked()
         for state in self._states:
@@ -548,6 +580,7 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
                 bool(self.extend_rails),
                 self.mode,
                 axis_locked,
+                plane_origin,
             )
             vert = bm.verts[state.index]
             local = local_from_world(
@@ -577,7 +610,7 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
         context.area.header_text_set(
             format_status_text(
                 float(self.angle),
-                lock_label(self._axis_state, self._orientation_name),
+                self._axis_status_label(),
                 bool(self.extend_rails),
                 self._frozen_count,
                 self._numeric,
@@ -649,7 +682,7 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
 
 
 class VIEW3D_MT_slide_pie(bpy.types.Menu):
-    """Shift+Alt+R pie: pick Rotate or Scale, then the Slide modal starts."""
+    """Shift+Alt+R pie: pick Rotate, Scale, or Flatten, then the Slide modal starts."""
 
     bl_label = "Slide"
     bl_idname = "VIEW3D_MT_slide_pie"
@@ -657,10 +690,12 @@ class VIEW3D_MT_slide_pie(bpy.types.Menu):
     def draw(self, _context: bpy.types.Context) -> None:
         pie = self.layout.menu_pie()
         pie.operator_context = "INVOKE_REGION_WIN"
-        # Slot order: first = left, second = right. Labels start with R / S
-        # so pie accelerators match native transform letters.
+        # Slot order: W, E, S, N. Labels start with R / S / F so pie
+        # accelerators match native transform letters plus Flatten.
         _add_slide_operator(pie, MODE_ROTATE, "Rotate")
         _add_slide_operator(pie, MODE_SCALE, "Scale")
+        pie.separator()
+        _add_slide_operator(pie, MODE_FLATTEN, "Flatten")
 
 
 class SR_OT_reload(bpy.types.Operator):
@@ -702,6 +737,7 @@ def _draw_mesh_menu(self, _context: bpy.types.Context) -> None:
     column.operator_context = "INVOKE_REGION_WIN"
     _add_slide_operator(column, MODE_ROTATE, "Slide Rotate")
     _add_slide_operator(column, MODE_SCALE, "Slide Scale")
+    _add_slide_operator(column, MODE_FLATTEN, "Slide Flatten")
 
 
 def _draw_transform_menu(self, context: bpy.types.Context) -> None:

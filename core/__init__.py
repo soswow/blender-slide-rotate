@@ -8,17 +8,21 @@ from .axis import (
     press_axis_key,
 )
 from .geometry import (
+    apply_vertex_flatten,
     apply_vertex_scale,
     apply_vertex_slide,
     apply_vertex_theta,
+    best_fit_plane,
     build_vertex_state,
     choose_rail,
     clamp_t,
     overlay_axis_segment,
     overlay_segment,
+    solve_flatten_rail_parameter,
     solve_rail_parameter,
     solve_scale_rail_parameter,
     transformed_world,
+    unconstrained_flattened_point,
     unconstrained_scaled_point,
 )
 from .input import (
@@ -39,10 +43,11 @@ from .input import (
     wrap_angle_delta,
 )
 from .transforms import bounding_box_center, choose_pivot, local_from_world, median_point, world_from_local
-from .types import AxisLockState, MODE_ROTATE, MODE_SCALE, NumericInput, Rail, VertexRailState
+from .types import AxisLockState, MODE_FLATTEN, MODE_ROTATE, MODE_SCALE, NumericInput, Rail, VertexRailState
 
 __all__ = (
     "AxisLockState",
+    "MODE_FLATTEN",
     "MODE_ROTATE",
     "MODE_SCALE",
     "NumericInput",
@@ -51,10 +56,12 @@ __all__ = (
     "PrecisionAccumulator",
     "accumulate_precision",
     "apply_precision",
+    "apply_vertex_flatten",
     "apply_vertex_scale",
     "apply_vertex_slide",
     "apply_vertex_theta",
     "axis_overlay_color",
+    "best_fit_plane",
     "bounding_box_center",
     "build_vertex_state",
     "choose_pivot",
@@ -79,9 +86,11 @@ __all__ = (
     "screen_scale_factor",
     "select_snap_increment",
     "snap_angle",
+    "solve_flatten_rail_parameter",
     "solve_rail_parameter",
     "solve_scale_rail_parameter",
     "transformed_world",
+    "unconstrained_flattened_point",
     "unconstrained_scaled_point",
     "world_from_local",
     "wrap_angle_delta",

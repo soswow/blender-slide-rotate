@@ -1,8 +1,10 @@
 import math
 
 from core.geometry import (
+    apply_vertex_flatten,
     apply_vertex_scale,
     apply_vertex_theta,
+    best_fit_plane,
     build_vertex_state,
     choose_rail,
     clamp_t,
@@ -10,9 +12,10 @@ from core.geometry import (
     overlay_segment,
     solve_rail_parameter,
     transformed_world,
+    unconstrained_flattened_point,
     unconstrained_scaled_point,
 )
-from core.types import MODE_SCALE, Rail, VertexRailState
+from core.types import MODE_FLATTEN, MODE_SCALE, Rail, VertexRailState
 from core.vec import almost_equal
 
 
@@ -387,3 +390,107 @@ def test_locked_scale_scores_rails_along_axis() -> None:
     # Unlocked uniform scale prefers the radial (roughly 1,1); both score, but
     # X-lock should prefer the X rail.
     assert abs(locked.direction[0]) > 0.9
+
+
+def test_best_fit_plane_xy_square_is_z() -> None:
+    origin, normal = best_fit_plane(
+        [(0.0, 0.0, 0.0), (2.0, 0.0, 0.0), (2.0, 2.0, 0.0), (0.0, 2.0, 0.0)]
+    )
+    assert almost_equal(origin, (1.0, 1.0, 0.0))
+    assert abs(abs(normal[2]) - 1.0) < 1e-6
+    assert abs(normal[0]) < 1e-6 and abs(normal[1]) < 1e-6
+
+
+def test_best_fit_plane_rejects_collinear() -> None:
+    assert best_fit_plane([(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (2.0, 0.0, 0.0)]) is None
+
+
+def test_flatten_prefers_normal_rail() -> None:
+    """A bump with a Z rail and an in-plane X rail should slide on Z."""
+    vertex = (1.0, 0.0, 2.0)
+    others = [(2.0, 0.0, 2.0), (1.0, 0.0, 0.0)]
+    rail = choose_rail(vertex, others, (0.0, 0.0, 0.0), (0.0, 0.0, 1.0), mode=MODE_FLATTEN)
+    assert rail is not None
+    assert abs(rail.direction[2]) > 0.9
+
+
+def test_flatten_factor_one_hits_plane_on_tilted_rail() -> None:
+    plane_origin = (0.0, 0.0, 0.0)
+    plane_normal = (0.0, 0.0, 1.0)
+    original = (1.0, 0.0, 2.0)
+    length = (0.2 * 0.2 + 1.0) ** 0.5
+    direction = (0.2 / length, 0.0, -1.0 / length)
+    rail = Rail(origin=original, direction=direction, t_min=-10.0, t_max=10.0, merged=True)
+    state = VertexRailState(
+        index=0,
+        original_world=original,
+        original_local=original,
+        rail=rail,
+        movable=True,
+    )
+    apply_vertex_flatten(state, plane_origin, plane_normal, 1.0, True)
+    world = transformed_world(state)
+    assert abs(world[2]) < 1e-9
+    apply_vertex_flatten(state, plane_origin, plane_normal, 0.0, True)
+    assert almost_equal(transformed_world(state), original)
+    apply_vertex_flatten(state, plane_origin, plane_normal, 0.5, True)
+    assert abs(transformed_world(state)[2] - 1.0) < 1e-9
+
+
+def test_flatten_unconstrained_lerp_matches_projection() -> None:
+    original = (0.0, 0.0, 4.0)
+    assert almost_equal(
+        unconstrained_flattened_point(original, (0.0, 0.0, 1.0), (0.0, 0.0, 1.0), 1.0),
+        (0.0, 0.0, 1.0),
+    )
+    assert almost_equal(
+        unconstrained_flattened_point(original, (0.0, 0.0, 1.0), (0.0, 0.0, 1.0), 0.25),
+        (0.0, 0.0, 3.25),
+    )
+
+
+def test_flatten_parallel_rail_stays_put() -> None:
+    original = (1.0, 0.0, 2.0)
+    rail = Rail(origin=original, direction=(1.0, 0.0, 0.0), t_min=-4.0, t_max=4.0)
+    state = VertexRailState(
+        index=0,
+        original_world=original,
+        original_local=original,
+        rail=rail,
+        movable=True,
+    )
+    apply_vertex_flatten(state, (0.0, 0.0, 0.0), (0.0, 0.0, 1.0), 1.0, True)
+    assert almost_equal(transformed_world(state), original)
+    assert state.used_fallback
+
+
+def test_flatten_clamp_stops_at_physical_end() -> None:
+    original = (0.0, 0.0, 2.0)
+    rail = Rail(origin=original, direction=(0.0, 0.0, -1.0), t_min=0.0, t_max=0.5)
+    state = VertexRailState(
+        index=0,
+        original_world=original,
+        original_local=original,
+        rail=rail,
+        movable=True,
+    )
+    apply_vertex_flatten(state, (0.0, 0.0, 0.0), (0.0, 0.0, 1.0), 1.0, False)
+    assert almost_equal(transformed_world(state), (0.0, 0.0, 1.5))
+
+
+def test_flatten_does_not_freeze_pivot_vertex() -> None:
+    """Rotate freezes the pivot vertex; flatten must still slide it onto the plane."""
+    pivot = (0.0, 0.0, 0.0)
+    original = pivot
+    state = build_vertex_state(
+        0,
+        original,
+        original,
+        [(0.0, 0.0, -2.0)],
+        pivot,
+        (0.0, 0.0, 1.0),
+        mode=MODE_FLATTEN,
+    )
+    assert state.movable and state.rail is not None
+    apply_vertex_flatten(state, (0.0, 0.0, 1.0), (0.0, 0.0, 1.0), 1.0, True)
+    assert abs(transformed_world(state)[2] - 1.0) < 1e-9

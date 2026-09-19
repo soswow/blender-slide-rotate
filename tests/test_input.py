@@ -18,7 +18,7 @@ from core.input import (
     snap_angle,
     wrap_angle_delta,
 )
-from core.types import MODE_SCALE
+from core.types import MODE_FLATTEN, MODE_SCALE
 
 
 def test_wrap_angle_delta_crosses_pi() -> None:
@@ -195,3 +195,28 @@ def test_status_text_scale_mode() -> None:
         factor=1.0,
     )
     assert typed == "Slide Scale | Scale: 2 | Axis: Global X | Clamped | C: Extend"
+
+
+def test_status_text_flatten_mode() -> None:
+    from core.input import format_status_text
+
+    text = format_status_text(
+        0.0,
+        "Best Fit",
+        True,
+        0,
+        NumericInput(),
+        mode=MODE_FLATTEN,
+        factor=1.0,
+    )
+    assert text == "Slide Flatten | Flatten: 1.000 | Axis: Best Fit | Extend Rails | C: Clamp"
+    typed = format_status_text(
+        0.0,
+        "Global Z",
+        False,
+        0,
+        NumericInput(active=True, text="0.5"),
+        mode=MODE_FLATTEN,
+        factor=0.0,
+    )
+    assert typed == "Slide Flatten | Flatten: 0.5 | Axis: Global Z | Clamped | C: Extend"
