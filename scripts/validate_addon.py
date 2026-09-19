@@ -1,0 +1,127 @@
+"""Headless Blender 5.1 registration, keymap, poll, execute, and reload smoke."""
+
+from __future__ import annotations
+
+import importlib.util
+import math
+import sys
+from pathlib import Path
+
+import bmesh
+import bpy
+
+
+def load_extension_module():
+    extension_directory = Path(__file__).resolve().parents[1]
+    module_name = "slide_rotate"
+    spec = importlib.util.spec_from_file_location(
+        module_name,
+        extension_directory / "__init__.py",
+        submodule_search_locations=[str(extension_directory)],
+    )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _assert_keymap(extension) -> None:
+    assert len(extension._addon_keymaps) == 1
+    _keymap, item = extension._addon_keymaps[0]
+    assert item.idname == "mesh.slide_rotate"
+    assert item.type == "R"
+    assert item.shift and item.alt
+    assert not item.ctrl
+
+
+def _build_loop_with_rails() -> bpy.types.Object:
+    mesh = bpy.data.meshes.new("slide_rotate_probe")
+    obj = bpy.data.objects.new("slide_rotate_probe", mesh)
+    bpy.context.collection.objects.link(obj)
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    builder = bmesh.new()
+    coords = (
+        (0.0, 0.0, 0.0),
+        (1.0, 0.0, 0.0),
+        (2.0, 0.0, 0.0),
+        (0.0, 1.0, 0.0),
+        (1.0, 1.0, 0.0),
+        (2.0, 1.0, 0.0),
+    )
+    verts = [builder.verts.new(coord) for coord in coords]
+    builder.faces.new((verts[0], verts[1], verts[4], verts[3]))
+    builder.faces.new((verts[1], verts[2], verts[5], verts[4]))
+    builder.to_mesh(mesh)
+    builder.free()
+    return obj
+
+
+def main() -> None:
+    extension = load_extension_module()
+    registered = False
+    try:
+        extension.register()
+        registered = True
+        _assert_keymap(extension)
+        from slide_rotate.ui.operators import MESH_OT_slide_rotate
+        from slide_rotate.ui import overlay as overlay_module
+
+        assert not MESH_OT_slide_rotate.poll(bpy.context)
+
+        obj = _build_loop_with_rails()
+        bpy.ops.object.mode_set(mode="EDIT")
+        bpy.context.tool_settings.mesh_select_mode = (True, False, False)
+        mesh = obj.data
+        edit_mesh = bmesh.from_edit_mesh(mesh)
+        edit_mesh.select_mode = {"VERT"}
+        edit_mesh.verts.ensure_lookup_table()
+        for face in edit_mesh.faces:
+            face.select = False
+        for edge in edit_mesh.edges:
+            edge.select = False
+        for vert in edit_mesh.verts:
+            vert.select = abs(vert.co.y) < 1e-8
+        bmesh.update_edit_mesh(mesh)
+        assert MESH_OT_slide_rotate.poll(bpy.context)
+
+        bpy.ops.mesh.slide_rotate(angle=math.radians(20.0), extend_rails=True)
+        edit_mesh = bmesh.from_edit_mesh(mesh)
+        edit_mesh.verts.ensure_lookup_table()
+        left_y = float(edit_mesh.verts[0].co.y)
+        mid_y = float(edit_mesh.verts[1].co.y)
+        right_y = float(edit_mesh.verts[2].co.y)
+        assert abs(mid_y) < 1e-5
+        assert abs(left_y) > 1e-4
+        assert abs(right_y) > 1e-4
+        assert left_y * right_y < 0.0
+
+        overlay_module.ensure_draw_handler()
+        overlay_module.remove_draw_handler()
+        overlay_module.remove_draw_handler()
+
+        bpy.ops.object.mode_set(mode="OBJECT")
+        assert not MESH_OT_slide_rotate.poll(bpy.context)
+
+        extension.unregister()
+        registered = False
+        assert not extension._addon_keymaps
+        extension.register()
+        registered = True
+        _assert_keymap(extension)
+        bpy.ops.object.mode_set(mode="EDIT")
+        assert MESH_OT_slide_rotate.poll(bpy.context)
+        print("Slide Rotate validate_addon: ok")
+    finally:
+        if registered:
+            extension.unregister()
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception:
+        import traceback
+
+        traceback.print_exc()
+        sys.exit(1)

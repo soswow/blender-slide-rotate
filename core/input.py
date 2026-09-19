@@ -1,0 +1,148 @@
+"""Pure mouse-angle, precision, snap, and numeric-input helpers."""
+
+from __future__ import annotations
+
+import math
+
+from .types import NumericInput
+
+PRECISION_FACTOR = 0.1
+# Fallback when Blender snap increments are unavailable.
+DEFAULT_SNAP_RADIANS = math.radians(5.0)
+DEFAULT_PRECISION_SNAP_RADIANS = math.radians(1.0)
+
+_DIGIT_KEYS = {
+    "ZERO": "0",
+    "ONE": "1",
+    "TWO": "2",
+    "THREE": "3",
+    "FOUR": "4",
+    "FIVE": "5",
+    "SIX": "6",
+    "SEVEN": "7",
+    "EIGHT": "8",
+    "NINE": "9",
+    "NUMPAD_0": "0",
+    "NUMPAD_1": "1",
+    "NUMPAD_2": "2",
+    "NUMPAD_3": "3",
+    "NUMPAD_4": "4",
+    "NUMPAD_5": "5",
+    "NUMPAD_6": "6",
+    "NUMPAD_7": "7",
+    "NUMPAD_8": "8",
+    "NUMPAD_9": "9",
+}
+
+
+def wrap_angle_delta(start: float, current: float) -> float:
+    """Signed shortest delta from ``start`` to ``current`` in (-pi, pi]."""
+    delta = current - start
+    while delta > math.pi:
+        delta -= 2.0 * math.pi
+    while delta <= -math.pi:
+        delta += 2.0 * math.pi
+    return delta
+
+
+def screen_angle(mouse_x: float, mouse_y: float, pivot_x: float, pivot_y: float) -> float | None:
+    """Atan2 angle of the mouse around a screen-space pivot, or None if too close."""
+    dx = mouse_x - pivot_x
+    dy = mouse_y - pivot_y
+    if dx * dx + dy * dy < 4.0:
+        return None
+    return math.atan2(dy, dx)
+
+
+def apply_precision(delta: float, precision: bool, factor: float = PRECISION_FACTOR) -> float:
+    return delta * factor if precision else delta
+
+
+def snap_angle(theta: float, increment: float) -> float:
+    if increment <= 0.0:
+        return theta
+    return round(theta / increment) * increment
+
+
+def select_snap_increment(
+    snap: bool,
+    precision: bool,
+    increment: float,
+    precision_increment: float,
+) -> float | None:
+    """Return the angle step while Ctrl is held, else None."""
+    if not snap:
+        return None
+    if precision:
+        return precision_increment if precision_increment > 0.0 else DEFAULT_PRECISION_SNAP_RADIANS
+    return increment if increment > 0.0 else DEFAULT_SNAP_RADIANS
+
+
+def mouse_delta_fallback(start_x: float, mouse_x: float, pixels_per_radian: float = 200.0) -> float:
+    """Horizontal-drag fallback when the pivot is off-screen or behind the camera."""
+    if pixels_per_radian <= 0.0:
+        return 0.0
+    return (mouse_x - start_x) / pixels_per_radian
+
+
+def numeric_handle_key(state: NumericInput, event_type: str, unicode_char: str) -> tuple[bool, NumericInput]:
+    """Feed one key into simple numeric entry. Returns (handled, next_state)."""
+    if event_type in {"BACK_SPACE", "BACKSPACE"}:
+        if not state.active:
+            return False, state
+        if state.text:
+            return True, NumericInput(active=True, text=state.text[:-1])
+        return True, NumericInput(active=False, text="")
+
+    digit = _DIGIT_KEYS.get(event_type)
+    if digit is None and unicode_char and unicode_char in "0123456789":
+        digit = unicode_char
+    if digit is not None:
+        return True, NumericInput(active=True, text=state.text + digit)
+
+    if event_type in {"PERIOD", "NUMPAD_PERIOD"} or unicode_char == ".":
+        if "." in state.text:
+            return True, state
+        prefix = state.text if state.active else ""
+        return True, NumericInput(active=True, text=prefix + ".")
+
+    if event_type in {"MINUS", "NUMPAD_MINUS"} or unicode_char == "-":
+        if not state.active or state.text == "":
+            return True, NumericInput(active=True, text="-")
+        if state.text.startswith("-"):
+            return True, NumericInput(active=True, text=state.text[1:])
+        return True, NumericInput(active=True, text="-" + state.text)
+
+    return False, state
+
+
+def format_status_text(
+    angle: float,
+    axis_name: str,
+    extend_rails: bool,
+    frozen: int,
+    numeric: NumericInput,
+) -> str:
+    """Viewport header line during the modal."""
+    degrees = math.degrees(angle)
+    if numeric.active:
+        shown = numeric.text if numeric.text else "0"
+        angle_part = f"Angle: {shown}°"
+    else:
+        angle_part = f"Angle: {degrees:.1f}°"
+    clamp_part = "Extend Rails | C: Clamp" if extend_rails else "Clamped | C: Extend"
+    frozen_part = f" | Frozen: {frozen}" if frozen else ""
+    return f"Slide Rotate | {angle_part} | Axis: {axis_name} | {clamp_part}{frozen_part}"
+
+
+def numeric_value_radians(state: NumericInput) -> float | None:
+    """Parse typed degrees into radians, or None while the buffer is incomplete."""
+    if not state.active:
+        return None
+    text = state.text.strip()
+    if text in {"", "-", ".", "-."}:
+        return None
+    try:
+        return math.radians(float(text))
+    except ValueError:
+        return None
