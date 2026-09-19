@@ -2,6 +2,10 @@
 
 Conventions for humans and coding agents working in this repo. Fresh sessions should read [MILESTONES.md](MILESTONES.md) for current progress.
 
+M0–M4 are done. New work is Unreleased bugfixes/polish unless a milestone is opened.
+
+`initial-ai-generated-requirements.md` is a historical first-pass spec, not current behavior. Prefer README, this file, and `core/`.
+
 ## Changelog
 
 User-visible work must land with a bullet under `## [Unreleased]` in `CHANGELOG.md` **in the same change** as the code (Keep a Changelog: Added / Changed / Fixed / Removed).
@@ -42,7 +46,7 @@ python3 -m pytest
 | --- | --- |
 | Vectors / matrices | `core/vec.py` |
 | Rail solve, clamp, overlay segments | `core/geometry.py` |
-| X/Y/Z lock cycling | `core/axis.py` |
+| X/Y/Z lock cycling, view-follow mouse sign | `core/axis.py` |
 | Mouse angle, snap, numeric input, status text | `core/input.py` |
 | Pivots, world↔local | `core/transforms.py` |
 | Dataclasses | `core/types.py` |
@@ -54,6 +58,23 @@ python3 -m pytest
 | Blender smoke | `scripts/validate_addon.py` |
 
 Keep `core/` free of `bpy`. `ui/operators.py` only maps Blender events onto those functions.
+
+## Modal mouse → theta
+
+Unconstrained: screen `atan2` (CCW around the projected pivot) applied around the **view axis**. `_view_axis` is `view_rotation @ (0,0,1)` — toward the camera — which is why free rotate follows the mouse from any side.
+
+Axis lock: the same screen angle, applied around world/orientation X/Y/Z. If that axis points **away** from the camera, `_theta_from_mouse` multiplies by `mouse_angle_axis_sign` or the gesture reverses after orbiting to the other side of the model. Native `R` does the same flip. Perspective uses camera minus pivot; ortho uses the view axis.
+
+Do **not** flip typed degrees or Redo Last (`execute` applies `self.angle` around the canonical lock axis).
+
+Rails and the polar solve in `core/geometry.py` are view-independent. “Lock follows the mouse on one side only” is the sign, not the solver. Rails are chosen once at invoke for the then-current axis.
+
+| Symptom | First look |
+| --- | --- |
+| Unconstrained OK, lock reversed after orbit | `mouse_angle_axis_sign`, `_theta_from_mouse` |
+| Nothing moves | rails / freeze / whole mesh selected |
+| Wrong in Top/Front/Right unconstrained | `_view_axis` |
+| Keymap / reload / poll | `__init__.py`, `scripts/validate_addon.py` |
 
 ## Do not
 

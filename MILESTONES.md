@@ -2,7 +2,7 @@
 
 Session tracker for Slide Rotate. Read **Current**, then [AGENTS.md](AGENTS.md).
 
-**Current:** done (M0–M4)
+**Current:** done (M0–M4). Treat new work as Unreleased bugfixes unless a milestone is opened.
 
 ## Protocol
 

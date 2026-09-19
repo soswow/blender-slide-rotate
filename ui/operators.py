@@ -328,6 +328,8 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
         )
 
     def _theta_from_mouse(self, context: bpy.types.Context, event: bpy.types.Event) -> float:
+        # Screen CCW around the projected pivot. Axis lock may flip the sign so a
+        # lock axis pointing away from the camera still follows the mouse.
         precision = bool(event.shift)
         snap = bool(event.ctrl)
         increment = select_snap_increment(
