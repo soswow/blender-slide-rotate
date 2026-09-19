@@ -1,11 +1,18 @@
 """Pure Slide Rotate math. Safe to import without bpy."""
 
-from .axis import lock_label, locked_axis_vector, press_axis_key
+from .axis import (
+    axis_overlay_color,
+    lock_axis_overlay_letter,
+    lock_label,
+    locked_axis_vector,
+    press_axis_key,
+)
 from .geometry import (
     apply_vertex_theta,
     build_vertex_state,
     choose_rail,
     clamp_t,
+    overlay_axis_segment,
     overlay_segment,
     solve_rail_parameter,
     transformed_world,
@@ -31,6 +38,7 @@ __all__ = (
     "VertexRailState",
     "apply_precision",
     "apply_vertex_theta",
+    "axis_overlay_color",
     "bounding_box_center",
     "build_vertex_state",
     "choose_pivot",
@@ -38,12 +46,14 @@ __all__ = (
     "clamp_t",
     "format_status_text",
     "local_from_world",
+    "lock_axis_overlay_letter",
     "lock_label",
     "locked_axis_vector",
     "median_point",
     "mouse_delta_fallback",
     "numeric_handle_key",
     "numeric_value_radians",
+    "overlay_axis_segment",
     "overlay_segment",
     "press_axis_key",
     "screen_angle",

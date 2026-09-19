@@ -152,6 +152,7 @@ def main() -> None:
         assert abs(right_y) > 1e-4
         assert left_y * right_y < 0.0
 
+        overlay_module.set_lock_axis((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), "X")
         overlay_module.ensure_draw_handler()
         overlay_module.remove_draw_handler()
         overlay_module.remove_draw_handler()

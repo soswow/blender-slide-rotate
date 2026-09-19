@@ -9,6 +9,7 @@ from bpy_extras import view3d_utils
 from mathutils import Matrix, Vector
 
 from ..core.axis import (
+    lock_axis_overlay_letter,
     lock_label,
     locked_axis_vector,
     mouse_angle_axis_sign,
@@ -251,7 +252,7 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
                 self._pivot_2d[0],
                 self._pivot_2d[1],
             )
-        overlay.set_rails(self._states, self.extend_rails)
+        self._sync_overlay()
         overlay.ensure_draw_handler()
         context.window.cursor_modal_set("SCROLL_XY")
         context.window_manager.modal_handler_add(self)
@@ -266,7 +267,7 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
             return self._confirm(context)
         if event.type == "C" and event.value == "PRESS" and not event.ctrl and not event.alt:
             self.extend_rails = not self.extend_rails
-            overlay.set_rails(self._states, self.extend_rails)
+            self._sync_overlay()
             self._apply(context)
             self._update_header(context)
             return {"RUNNING_MODAL"}
@@ -280,7 +281,7 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
             self._restore(context)
             if not self._prepare(context):
                 return self._cancel(context)
-            overlay.set_rails(self._states, self.extend_rails)
+            self._sync_overlay()
             if not self._numeric.active:
                 self.angle = self._theta_from_mouse(context, event)
             self._apply(context)
@@ -454,7 +455,7 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
             )
             vert.co = Vector(local)
         bmesh.update_edit_mesh(obj.data, loop_triangles=False, destructive=False)
-        overlay.set_rails(self._states, bool(self.extend_rails))
+        self._sync_overlay()
         if context.area is not None:
             context.area.tag_redraw()
 
@@ -479,6 +480,14 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
                 self._frozen_count,
                 self._numeric,
             )
+        )
+
+    def _sync_overlay(self) -> None:
+        overlay.set_rails(self._states, bool(self.extend_rails))
+        overlay.set_lock_axis(
+            self._pivot,
+            self._current_axis(),
+            lock_axis_overlay_letter(self._axis_state),
         )
 
     def _teardown_modal(self, context: bpy.types.Context) -> None:

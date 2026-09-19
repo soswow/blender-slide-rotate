@@ -326,6 +326,23 @@ def build_vertex_state(
     )
 
 
+def overlay_axis_segment(
+    pivot: Vec3,
+    axis: Vec3,
+    half_length: float,
+) -> tuple[Vec3, Vec3] | None:
+    """World-space endpoints of a line through ``pivot`` along ``axis``.
+
+    ``half_length`` is large enough in the overlay that the GPU clip planes
+    make it look infinite, like native R axis lock.
+    """
+    unit = normalize(axis)
+    if unit is None or half_length <= 0.0:
+        return None
+    offset = scale(unit, half_length)
+    return sub(pivot, offset), add(pivot, offset)
+
+
 def overlay_segment(rail: Rail, extend_rails: bool, pad: float = 2.0) -> tuple[Vec3, Vec3]:
     """World-space endpoints for the modal rail overlay."""
     if extend_rails:

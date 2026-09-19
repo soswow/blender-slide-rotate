@@ -50,7 +50,7 @@ While dragging:
 | 0–9, `.`, `-` | Type an angle in degrees |
 | Backspace | Edit typed input |
 
-The header shows the angle, axis, and clamp state. Yellow overlay lines are the cached rails.
+The header shows the angle, axis, and clamp state. Yellow overlay lines are the cached rails. Locking X, Y, or Z also draws a thick anti-aliased infinite axis through the pivot, using the same colors as native `R` (theme **Axis X/Y/Z**, mixed toward light gray).
 
 ## Geometry
 
@@ -95,7 +95,7 @@ That bumps `blender_manifest.toml` if needed, moves `## [Unreleased]` into a dat
 - Grid: select a horizontal loop, Shift+Alt+R, vertices travel on vertical rails.
 - Subdivided face: select the face including interior verts; they follow the same through-rails as the boundary instead of in-face edges.
 - Right/Front/Top ortho: free rotation is around the view axis (same as `R`).
-- Press `X` / `Y` / `Z` while dragging; header follows View → orientation → Global/Local.
+- Press `X` / `Y` / `Z` while dragging; header follows View → orientation → Global/Local, and a thick anti-aliased axis line in native-R colors appears through the pivot.
 - Axis lock still follows the mouse after orbiting 180° around the model (same as native `R`).
 - Active Element pivot: the active vertex stays put.
 - `C` clamps to the physical rail; default extend continues past the edge.

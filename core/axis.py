@@ -2,10 +2,22 @@
 
 from __future__ import annotations
 
+import math
+
 from .types import AxisLockState
 from .vec import Mat3, Vec3, column, dot, identity_mat3, normalize, sub
 
 _AXIS_INDEX = {"X": 0, "Y": 1, "Z": 2}
+# Factory Theme User Interface Axis X/Y/Z (TH_AXIS_*), used when bpy is absent.
+_FACTORY_AXIS_RGB = {
+    "X": (1.0, 0.2, 0.3215686274509804),
+    "Y": (0.5450980392156862, 0.8627450980392157, 0.0),
+    "Z": (0.1568627450980392, 0.5647058823529412, 1.0),
+}
+# Native R active constraint uses DRAWLIGHT, then UI_make_axis_color.
+_DRAWLIGHT_RGB = (220.0 / 255.0, 220.0 / 255.0, 220.0 / 255.0)
+_AXIS_COLOR_BLEND = 0.5
+_AXIS_COLOR_SHADE = -10
 
 
 def press_axis_key(state: AxisLockState, key: str) -> AxisLockState:
@@ -18,6 +30,44 @@ def press_axis_key(state: AxisLockState, key: str) -> AxisLockState:
     if state.stage == 1:
         return AxisLockState(letter=letter, stage=2)
     return AxisLockState(letter=None, stage=0)
+
+
+def lock_axis_overlay_letter(state: AxisLockState) -> str | None:
+    """X/Y/Z letter to draw like native R; None while unconstrained (View)."""
+    if state.stage == 0 or state.letter is None:
+        return None
+    return state.letter
+
+
+def blend_shade_rgb(
+    first: Vec3,
+    second: Vec3,
+    factor: float,
+    shade: int,
+) -> Vec3:
+    """Match ``get_color_blend_shade_3ubv``: lerp in bytes, then add ``shade``."""
+    factor = max(0.0, min(1.0, factor))
+    mixed: list[float] = []
+    for channel_a, channel_b in zip(first, second, strict=True):
+        byte_a = max(0, min(255, int(round(channel_a * 255.0))))
+        byte_b = max(0, min(255, int(round(channel_b * 255.0))))
+        value = int(math.floor((1.0 - factor) * byte_a + factor * byte_b)) + shade
+        mixed.append(max(0, min(255, value)) / 255.0)
+    return (mixed[0], mixed[1], mixed[2])
+
+
+def axis_overlay_color(
+    letter: str | None,
+    axis_rgb: tuple[float, float, float] | None = None,
+) -> tuple[float, float, float, float] | None:
+    """Native R constraint color: mix Axis X/Y/Z with DRAWLIGHT, then shade."""
+    if letter is None:
+        return None
+    raw = axis_rgb if axis_rgb is not None else _FACTORY_AXIS_RGB.get(letter.upper())
+    if raw is None:
+        return None
+    mixed = blend_shade_rgb(_DRAWLIGHT_RGB, raw, _AXIS_COLOR_BLEND, _AXIS_COLOR_SHADE)
+    return (mixed[0], mixed[1], mixed[2], 1.0)
 
 
 def lock_label(state: AxisLockState, orientation_name: str) -> str:

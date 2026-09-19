@@ -1,4 +1,7 @@
 from core.axis import (
+    axis_overlay_color,
+    blend_shade_rgb,
+    lock_axis_overlay_letter,
     lock_label,
     locked_axis_vector,
     mouse_angle_axis_sign,
@@ -144,3 +147,33 @@ def test_y_lock_follows_mouse_after_orbit_180_around_z() -> None:
         theta = screen_ccw * mouse_angle_axis_sign(axis, view)
         rotated = rotate_around_axis(point, pivot, axis, theta)
         assert _screen_spin(pivot, point, rotated, view) > 0.0
+
+
+def test_lock_axis_overlay_only_when_constrained() -> None:
+    assert lock_axis_overlay_letter(AxisLockState()) is None
+    assert lock_axis_overlay_letter(AxisLockState(letter="X", stage=0)) is None
+    assert lock_axis_overlay_letter(AxisLockState(letter="X", stage=1)) == "X"
+    assert lock_axis_overlay_letter(AxisLockState(letter="Y", stage=2)) == "Y"
+
+
+def test_axis_overlay_colors_match_xyz() -> None:
+    assert axis_overlay_color(None) is None
+    red = axis_overlay_color("X")
+    green = axis_overlay_color("Y")
+    blue = axis_overlay_color("Z")
+    assert red is not None and red[0] > red[1] and red[0] > red[2]
+    assert green is not None and green[1] > green[0] and green[1] > green[2]
+    assert blue is not None and blue[2] > blue[0] and blue[2] > blue[1]
+    assert axis_overlay_color("W") is None
+
+
+def test_native_r_mix_lightens_axis_x_toward_pink() -> None:
+    """DRAWLIGHT + Axis X + shade -10 is the pastel pink native R uses."""
+    raw_x = (1.0, 0.2, 0.3215686274509804)
+    mixed = blend_shade_rgb((220 / 255.0, 220 / 255.0, 220 / 255.0), raw_x, 0.5, -10)
+    assert mixed == (227 / 255.0, 125 / 255.0, 141 / 255.0)
+    overlay = axis_overlay_color("X", raw_x)
+    assert overlay is not None
+    assert overlay[:3] == mixed
+    assert overlay[1] > raw_x[1]
+    assert overlay[2] > raw_x[2]

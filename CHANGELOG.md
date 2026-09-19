@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- X/Y/Z lock draws a thick anti-aliased infinite axis line through the pivot, colored like native R (theme Axis X/Y/Z mixed with the same light blend).
+
 ## [0.1.0] - 2026-09-19
 
 ### Added

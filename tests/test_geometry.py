@@ -5,6 +5,7 @@ from core.geometry import (
     build_vertex_state,
     choose_rail,
     clamp_t,
+    overlay_axis_segment,
     overlay_segment,
     solve_rail_parameter,
     transformed_world,
@@ -145,6 +146,23 @@ def test_overlay_extends_past_physical_when_uncamped() -> None:
     clamped_start, clamped_end = overlay_segment(rail, extend_rails=False)
     assert almost_equal(clamped_start, (0.0, 0.0, 0.0))
     assert almost_equal(clamped_end, (1.0, 0.0, 0.0))
+
+
+def test_overlay_axis_segment_runs_through_pivot() -> None:
+    pivot = (1.0, 2.0, 3.0)
+    segment = overlay_axis_segment(pivot, (0.0, 0.0, 2.0), 10.0)
+    assert segment is not None
+    start, end = segment
+    assert almost_equal(start, (1.0, 2.0, -7.0))
+    assert almost_equal(end, (1.0, 2.0, 13.0))
+    midpoint = (
+        0.5 * (start[0] + end[0]),
+        0.5 * (start[1] + end[1]),
+        0.5 * (start[2] + end[2]),
+    )
+    assert almost_equal(midpoint, pivot)
+    assert overlay_axis_segment(pivot, (0.0, 0.0, 0.0), 10.0) is None
+    assert overlay_axis_segment(pivot, (0.0, 1.0, 0.0), 0.0) is None
 
 
 def test_face_interior_inplane_neighbors_miss_through_rotation() -> None:
