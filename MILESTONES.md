@@ -2,7 +2,7 @@
 
 Session tracker for Slide Rotate. Read **Current**, then [AGENTS.md](AGENTS.md).
 
-**Current:** done (M0–M4). Treat new work as Unreleased bugfixes unless a milestone is opened.
+**Current:** done (M0–M5). Treat new work as Unreleased bugfixes unless a milestone is opened.
 
 ## Protocol
 
@@ -58,6 +58,16 @@ Status: **done**
 - [x] README invoke, shortcut, math, limitations, manual checks
 - [x] CHANGELOG Unreleased
 - [x] Tracker complete
+
+## M5 — Face-interior through-rails
+
+Status: **done**
+
+- [x] When 1-ring rails are a poor match for the rotational tangent, copy leaving edges from the coplanar face island onto that vertex
+- [x] X/Y/Z lock restores the start pose and re-scores rails for the new axis
+- [x] pytest: in-face neighbors lose, borrowed through-rail wins, strong 1-ring rails stay, interior theta slide, axis-dependent borrow
+- [x] Blender smoke: subdivided face interiors move on through-rails
+- [x] CHANGELOG / README
 
 ## Deviations from the original spec
 

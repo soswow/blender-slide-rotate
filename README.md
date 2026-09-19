@@ -46,7 +46,7 @@ While dragging:
 | Shift | Precision |
 | Ctrl | Angle snap (scene 3D increment; Shift+Ctrl uses the precision increment) |
 | C | Toggle Clamp / Extend Rails (extend is the default) |
-| X / Y / Z | Axis lock like native `R` (orientation → Global/Local flip → View) |
+| X / Y / Z | Axis lock like native `R` (orientation → Global/Local flip → View). Rails are re-chosen for the new axis. |
 | 0–9, `.`, `-` | Type an angle in degrees |
 | Backspace | Edit typed input |
 
@@ -54,7 +54,9 @@ The header shows the angle, axis, and clamp state. Yellow overlay lines are the 
 
 ## Geometry
 
-One shared angle `theta` drives every vertex. Each vertex is assigned a rail **once at invoke** (outgoing edges to unselected vertices, scored against the rotational tangent). Opposite colinear neighbors are merged into one bidirectional rail so Clamp works in both directions, like a mid-loop slide.
+One shared angle `theta` drives every vertex. Each vertex is assigned a rail **once at invoke, and again if you lock X/Y/Z** (outgoing edges to unselected vertices, scored against the rotational tangent). Opposite colinear neighbors are merged into one bidirectional rail so Clamp works in both directions, like a mid-loop slide.
+
+Vertices sitting inside a subdivided face often have no 1-ring edge in the rotation direction. If every connected neighbor is a poor match for the rotational tangent, Slide Rotate copies rails from the coplanar face island: edges that leave that surface (the through-edges the boundary already has). Those borrowed rails are scored the same way, so interior verts can slide with the face instead of crawling along in-face edges.
 
 The solver intersects the rotated radial line with the rail in the current rotation plane (view axis by default), then applies that parameter on the real 3D rail. If the intersection is parallel, near the pivot, or numerically explosive, it falls back to projecting the unconstrained rotated point onto the rail. Vertices with no rail, or the active pivot vertex itself, stay still.
 
@@ -81,6 +83,7 @@ See [AGENTS.md](AGENTS.md) for changelog and unit-test rules, and [MILESTONES.md
 ## Manual checks
 
 - Grid: select a horizontal loop, Shift+Alt+R, vertices travel on vertical rails.
+- Subdivided face: select the face including interior verts; they follow the same through-rails as the boundary instead of in-face edges.
 - Right/Front/Top ortho: free rotation is around the view axis (same as `R`).
 - Press `X` / `Y` / `Z` while dragging; header follows View → orientation → Global/Local.
 - Axis lock still follows the mouse after orbiting 180° around the model (same as native `R`).

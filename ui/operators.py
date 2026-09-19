@@ -32,6 +32,9 @@ from ..core.types import AxisLockState, NumericInput, VertexRailState
 from ..core.vec import Mat3, Mat4, Vec3, identity_mat3, invert_affine_mat4, normalize
 from . import overlay
 
+# Faces whose normals align this closely are one island for borrowed rails.
+_COPLANAR_DOT = 0.999
+
 
 def _vec(values) -> Vec3:
     return (float(values[0]), float(values[1]), float(values[2]))
@@ -43,6 +46,73 @@ def _mat4(matrix: Matrix) -> Mat4:
 
 def _mat3(matrix: Matrix) -> Mat3:
     return tuple(tuple(float(matrix[row][col]) for col in range(3)) for row in range(3))
+
+
+def _coplanar_face_island(start_face: bmesh.types.BMFace) -> set[bmesh.types.BMFace]:
+    """Walk edge-adjacent faces that share ``start_face``'s plane."""
+    ref = start_face.normal.copy()
+    if ref.length_squared < 1e-16:
+        return {start_face}
+    ref.normalize()
+    island: set[bmesh.types.BMFace] = set()
+    stack = [start_face]
+    while stack:
+        face = stack.pop()
+        if face in island:
+            continue
+        normal = face.normal
+        if normal.length_squared < 1e-16:
+            continue
+        if abs(normal.normalized().dot(ref)) < _COPLANAR_DOT:
+            continue
+        island.add(face)
+        for edge in face.edges:
+            stack.extend(edge.link_faces)
+    return island
+
+
+def _borrowed_rail_worlds(
+    vert: bmesh.types.BMVert,
+    selected_ids: set[int],
+    matrix_world: Mat4,
+) -> list[Vec3]:
+    """Copy leaving-edge offsets from the coplanar face island onto ``vert``.
+
+    A vertex sitting inside a subdivided face has only in-face neighbors. The
+    boundary of that same planar region usually has edges going through the
+    volume; those directions are the rails the interior vertex is missing.
+    """
+    if not vert.link_faces:
+        return []
+    seen_faces: set[bmesh.types.BMFace] = set()
+    islands: list[set[bmesh.types.BMFace]] = []
+    for face in vert.link_faces:
+        if face in seen_faces:
+            continue
+        island = _coplanar_face_island(face)
+        seen_faces.update(island)
+        islands.append(island)
+
+    targets: list[Vec3] = []
+    seen_offsets: set[tuple[float, float, float]] = set()
+    for island in islands:
+        island_vert_ids = {island_vert.index for face in island for island_vert in face.verts}
+        for face in island:
+            for island_vert in face.verts:
+                for edge in island_vert.link_edges:
+                    far = edge.other_vert(island_vert)
+                    if far is None or far.index in island_vert_ids:
+                        continue
+                    if far.index in selected_ids:
+                        continue
+                    offset = far.co - island_vert.co
+                    key = (round(offset.x, 6), round(offset.y, 6), round(offset.z, 6))
+                    if key in seen_offsets:
+                        continue
+                    seen_offsets.add(key)
+                    target_local = _vec(vert.co + offset)
+                    targets.append(world_from_local(target_local, matrix_world))
+    return targets
 
 
 def _view_axis(rv3d) -> Vec3:
@@ -205,6 +275,12 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
             self._axis_state = state
             self.lock_letter = state.letter if state.letter is not None else "NONE"
             self.lock_stage = state.stage
+            # Rails depend on the rotational tangent, so lock must re-score
+            # (face-interior through-rails only win for the matching axis).
+            self._restore(context)
+            if not self._prepare(context):
+                return self._cancel(context)
+            overlay.set_rails(self._states, self.extend_rails)
             if not self._numeric.active:
                 self.angle = self._theta_from_mouse(context, event)
             self._apply(context)
@@ -295,7 +371,10 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
                 neighbors.append(world_from_local(_vec(other.co), self._matrix_world))
             local = _vec(vert.co)
             world = world_from_local(local, self._matrix_world)
-            states.append(build_vertex_state(vert.index, local, world, neighbors, pivot, axis))
+            borrowed = _borrowed_rail_worlds(vert, selected_ids, self._matrix_world)
+            states.append(
+                build_vertex_state(vert.index, local, world, neighbors, pivot, axis, borrowed)
+            )
         self._states = states
         self._frozen_count = sum(0 if state.movable else 1 for state in states)
         self._numeric = getattr(self, "_numeric", NumericInput())

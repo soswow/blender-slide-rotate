@@ -34,6 +34,62 @@ def _assert_keymap(extension) -> None:
     assert not item.ctrl
 
 
+def _assert_face_interior_through_rails() -> None:
+    """Interior vert on a subdivided face slides on borrowed through-rails around X."""
+    mesh = bpy.data.meshes.new("slide_rotate_interior")
+    obj = bpy.data.objects.new("slide_rotate_interior", mesh)
+    bpy.context.collection.objects.link(obj)
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    builder = bmesh.new()
+    # 3x3 grid on y=1; index 4 is the interior vertex.
+    face_coords = [(x, 1.0, z) for z in (-1.0, 0.0, 1.0) for x in (-1.0, 0.0, 1.0)]
+    face_verts = [builder.verts.new(coord) for coord in face_coords]
+    for row in range(2):
+        for col in range(2):
+            index = row * 3 + col
+            builder.faces.new(
+                (face_verts[index], face_verts[index + 1], face_verts[index + 4], face_verts[index + 3])
+            )
+    for index, vert in enumerate(face_verts):
+        if index == 4:
+            continue
+        far = builder.verts.new((vert.co.x, -1.0, vert.co.z))
+        builder.edges.new((vert, far))
+    builder.to_mesh(mesh)
+    builder.free()
+
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.context.tool_settings.mesh_select_mode = (True, False, False)
+    bpy.context.tool_settings.transform_pivot_point = "CURSOR"
+    bpy.context.scene.cursor.location = (1.0, 1.0, -1.0)
+    edit_mesh = bmesh.from_edit_mesh(mesh)
+    edit_mesh.select_mode = {"VERT"}
+    edit_mesh.verts.ensure_lookup_table()
+    for face in edit_mesh.faces:
+        face.select = False
+    for edge in edit_mesh.edges:
+        edge.select = False
+    for vert in edit_mesh.verts:
+        vert.select = abs(vert.co.y - 1.0) < 1e-8
+    bmesh.update_edit_mesh(mesh)
+
+    bpy.ops.mesh.slide_rotate(
+        angle=math.radians(20.0),
+        extend_rails=True,
+        lock_letter="X",
+        lock_stage=1,
+    )
+    edit_mesh = bmesh.from_edit_mesh(mesh)
+    edit_mesh.verts.ensure_lookup_table()
+    interior = next(vert for vert in edit_mesh.verts if abs(vert.co.x) < 1e-8 and abs(vert.co.z) < 1e-8)
+    assert abs(float(interior.co.x)) < 1e-5
+    assert abs(float(interior.co.z)) < 1e-5
+    assert abs(float(interior.co.y) - 1.0) > 1e-4
+    bpy.ops.object.mode_set(mode="OBJECT")
+    bpy.context.tool_settings.transform_pivot_point = "MEDIAN_POINT"
+
+
 def _build_loop_with_rails() -> bpy.types.Object:
     mesh = bpy.data.meshes.new("slide_rotate_probe")
     obj = bpy.data.objects.new("slide_rotate_probe", mesh)
@@ -101,6 +157,9 @@ def main() -> None:
         overlay_module.remove_draw_handler()
 
         bpy.ops.object.mode_set(mode="OBJECT")
+        assert not MESH_OT_slide_rotate.poll(bpy.context)
+
+        _assert_face_interior_through_rails()
         assert not MESH_OT_slide_rotate.poll(bpy.context)
 
         extension.unregister()

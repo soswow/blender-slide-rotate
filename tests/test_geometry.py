@@ -147,6 +147,99 @@ def test_overlay_extends_past_physical_when_uncamped() -> None:
     assert almost_equal(clamped_end, (1.0, 0.0, 0.0))
 
 
+def test_face_interior_inplane_neighbors_miss_through_rotation() -> None:
+    """In-face X/Z edges score 0 against an X-axis hinge; they are the wrong rails."""
+    vertex = (0.0, 0.0, 1.0)
+    others = [(1.0, 0.0, 1.0), (-1.0, 0.0, 1.0), (0.0, 0.0, 2.0), (0.0, 0.0, 0.0)]
+    pivot = (0.0, 0.0, 0.0)
+    axis = (1.0, 0.0, 0.0)
+    rail = choose_rail(vertex, others, pivot, axis)
+    assert rail is not None
+    assert abs(rail.direction[1]) < 0.5
+
+
+def test_face_interior_borrowed_through_rail_wins() -> None:
+    """Copied volume-through edges become the rail when 1-ring neighbors lie in the face."""
+    vertex = (0.0, 0.0, 1.0)
+    others = [(1.0, 0.0, 1.0), (-1.0, 0.0, 1.0), (0.0, 0.0, 2.0), (0.0, 0.0, 0.0)]
+    borrowed = [(0.0, -2.0, 1.0)]
+    pivot = (0.0, 0.0, 0.0)
+    axis = (1.0, 0.0, 0.0)
+    rail = choose_rail(vertex, others, pivot, axis, borrowed_others=borrowed)
+    assert rail is not None
+    assert almost_equal(rail.direction, (0.0, -1.0, 0.0)) or almost_equal(
+        rail.direction,
+        (0.0, 1.0, 0.0),
+    )
+    assert abs(rail.t_max - 2.0) < 1e-9
+
+
+def test_borrowed_through_rail_follows_axis() -> None:
+    """Physical in-face X wins around Y; borrowed through-Y wins around X."""
+    vertex = (0.0, 0.0, 1.0)
+    others = [(1.0, 0.0, 1.0)]
+    borrowed = [(0.0, -2.0, 1.0)]
+    pivot = (0.0, 0.0, 0.0)
+    around_x = choose_rail(vertex, others, pivot, (1.0, 0.0, 0.0), borrowed_others=borrowed)
+    around_y = choose_rail(vertex, others, pivot, (0.0, 1.0, 0.0), borrowed_others=borrowed)
+    assert around_x is not None and around_y is not None
+    assert abs(around_x.direction[1]) > 0.9
+    assert abs(around_y.direction[0]) > 0.9
+
+
+def test_strong_physical_rail_ignores_borrowed() -> None:
+    """A good 1-ring rail is kept even if the face island also offers another direction."""
+    pivot = (1.0, 0.0, 0.0)
+    axis = (0.0, 0.0, 1.0)
+    rail = choose_rail(
+        (0.0, 0.0, 0.0),
+        [(0.0, 1.0, 0.0), (0.0, -1.0, 0.0), (1.0, 0.0, 0.0)],
+        pivot,
+        axis,
+        borrowed_others=[(2.0, 0.0, 0.0)],
+    )
+    assert rail is not None and rail.merged
+    assert almost_equal(rail.direction, (0.0, 1.0, 0.0)) or almost_equal(
+        rail.direction,
+        (0.0, -1.0, 0.0),
+    )
+
+
+def test_face_interior_with_no_unselected_neighbors_uses_borrowed() -> None:
+    """All in-face neighbors selected: borrowed through-edge is the only rail."""
+    vertex = (0.0, 0.0, 1.0)
+    pivot = (0.0, 0.0, 0.0)
+    axis = (1.0, 0.0, 0.0)
+    rail = choose_rail(vertex, [], pivot, axis, borrowed_others=[(0.0, -2.0, 1.0)])
+    assert rail is not None
+    assert almost_equal(rail.direction, (0.0, -1.0, 0.0)) or almost_equal(
+        rail.direction,
+        (0.0, 1.0, 0.0),
+    )
+
+
+def test_face_interior_borrowed_state_slides_with_theta() -> None:
+    """Interior vert on a borrowed Y rail tracks X-axis rotation like a boundary vert."""
+    original = (0.0, 0.0, 1.0)
+    pivot = (0.0, 0.0, 0.0)
+    axis = (1.0, 0.0, 0.0)
+    state = build_vertex_state(
+        index=0,
+        local=original,
+        world=original,
+        neighbor_worlds=[(1.0, 0.0, 1.0), (0.0, 0.0, 0.0)],
+        pivot=pivot,
+        axis=axis,
+        borrowed_worlds=[(0.0, -2.0, 1.0)],
+    )
+    assert state.movable
+    apply_vertex_theta(state, pivot, axis, math.radians(30.0), True)
+    world = transformed_world(state)
+    assert abs(world[0] - 0.0) < 1e-9
+    assert abs(world[2] - 1.0) < 1e-9
+    assert world[1] < -0.1
+
+
 def test_recompute_from_original_avoids_drift() -> None:
     rail = Rail(origin=(1.0, 0.0, 0.0), direction=(0.0, 1.0, 0.0), t_min=-5.0, t_max=5.0, merged=True)
     state = VertexRailState(

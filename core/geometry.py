@@ -36,6 +36,9 @@ NEAR_PIVOT_EPS = 1e-8
 MIN_EDGE_LENGTH = 1e-8
 # Treat two outgoing rails as one bidirectional line when aligned this closely.
 COLINEAR_DOT = 0.999
+# Physical 1-ring rails below this alignment may be replaced by borrowed
+# through-face rails (face-interior verts whose only edges lie in the face).
+WEAK_RAIL_SCORE = 0.5
 # Extreme intersections are treated as unstable and fall back to projection.
 MAX_ABS_T = 1.0e6
 
@@ -206,25 +209,14 @@ def _try_merge_colinear(vertex_world: Vec3, first: CandidateEdge, second: Candid
     )
 
 
-def choose_rail(
-    vertex_world: Vec3,
-    others: list[Vec3],
-    pivot: Vec3,
-    axis: Vec3,
-) -> Rail | None:
-    """Pick one bidirectional rail from unselected-end neighbors.
-
-    Opposite colinear neighbors (typical mid-loop) become one clamp interval
-    spanning both segments. Rails are scored against the rotation-plane tangent
-    and cached by the caller — they must not change while the mouse moves.
-    """
+def _rails_from_others(vertex_world: Vec3, others: list[Vec3]) -> list[Rail]:
     candidates: list[CandidateEdge] = []
     for other in others:
         candidate = _candidate_from_other(vertex_world, other)
         if candidate is not None:
             candidates.append(candidate)
     if not candidates:
-        return None
+        return []
 
     rails: list[Rail] = []
     used: set[int] = set()
@@ -256,8 +248,10 @@ def choose_rail(
                     merged=False,
                 )
             )
+    return rails
 
-    tangent = rotational_tangent(pivot, vertex_world, axis)
+
+def _best_rail(rails: list[Rail], tangent: Vec3 | None) -> tuple[Rail | None, float]:
     best: Rail | None = None
     best_score = -1.0
     for rail in rails:
@@ -268,7 +262,37 @@ def choose_rail(
         ):
             best = rail
             best_score = score
-    return best
+    return best, best_score if best is not None else 0.0
+
+
+def choose_rail(
+    vertex_world: Vec3,
+    others: list[Vec3],
+    pivot: Vec3,
+    axis: Vec3,
+    borrowed_others: list[Vec3] | None = None,
+) -> Rail | None:
+    """Pick one bidirectional rail from unselected-end neighbors.
+
+    Opposite colinear neighbors (typical mid-loop) become one clamp interval
+    spanning both segments. Rails are scored against the rotation-plane tangent
+    and cached by the caller — they must not change while the mouse moves.
+
+    ``borrowed_others`` are extra endpoints copied from coplanar face-island
+    edges that leave the surface. Face-interior vertices have no 1-ring edge
+    through the volume; those borrowed points supply that missing rail when
+    every physical neighbor is a poor match for the rotational tangent.
+    """
+    tangent = rotational_tangent(pivot, vertex_world, axis)
+    rail, score = _best_rail(_rails_from_others(vertex_world, others), tangent)
+    if borrowed_others and score < WEAK_RAIL_SCORE:
+        borrowed_rail, borrowed_score = _best_rail(
+            _rails_from_others(vertex_world, borrowed_others),
+            tangent,
+        )
+        if borrowed_rail is not None and borrowed_score > score + 1e-9:
+            return borrowed_rail
+    return rail
 
 
 def is_near_pivot(point: Vec3, pivot: Vec3) -> bool:
@@ -282,6 +306,7 @@ def build_vertex_state(
     neighbor_worlds: list[Vec3],
     pivot: Vec3,
     axis: Vec3,
+    borrowed_worlds: list[Vec3] | None = None,
 ) -> VertexRailState:
     if is_near_pivot(world, pivot):
         return VertexRailState(
@@ -291,7 +316,7 @@ def build_vertex_state(
             rail=None,
             movable=False,
         )
-    rail = choose_rail(world, neighbor_worlds, pivot, axis)
+    rail = choose_rail(world, neighbor_worlds, pivot, axis, borrowed_worlds)
     return VertexRailState(
         index=index,
         original_world=world,
