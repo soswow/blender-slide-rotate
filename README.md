@@ -25,7 +25,7 @@ That symlinks this repo to `~/Library/Application Support/Blender/5.1/extensions
 ## Invoke
 
 - Shortcut: **Shift+Alt+R** in Mesh Edit Mode
-- Menu: **Vertex → Slide Rotate** or **Edge → Slide Rotate**
+- Menu: **Mesh → Transform → Slide Rotate**, also **Vertex** / **Edge → Slide Rotate**
 - Search: **F3 → Slide Rotate**
 - Sidebar: **3D View → Slide Rotate → Slide Rotate**
 

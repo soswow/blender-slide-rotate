@@ -309,8 +309,6 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
         if not self._prepare(context):
             return {"CANCELLED"}
         self._apply(context)
-        if self._frozen_count:
-            self.report({"INFO"}, f"{self._frozen_count} vertices stayed still")
         return {"FINISHED"}
 
     def cancel(self, context: bpy.types.Context) -> None:
@@ -505,8 +503,6 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
             self.angle = typed
             self._apply(context)
         self._teardown_modal(context)
-        if self._frozen_count:
-            self.report({"INFO"}, f"{self._frozen_count} vertices stayed still")
         return {"FINISHED"}
 
     def _cancel(self, context: bpy.types.Context):
@@ -546,20 +542,35 @@ def _draw_mesh_menu(self, _context: bpy.types.Context) -> None:
     self.layout.operator(MESH_OT_slide_rotate.bl_idname, text="Slide Rotate")
 
 
+def _draw_transform_menu(self, context: bpy.types.Context) -> None:
+    # VIEW3D_MT_transform is shared with curve/lattice/etc.; only show in mesh Edit Mode.
+    if getattr(context, "mode", None) != "EDIT_MESH":
+        return
+    _draw_mesh_menu(self, context)
+
+
 CLASSES = (
     MESH_OT_slide_rotate,
     SR_OT_reload,
 )
 
 
+def _menu_draws() -> tuple[tuple[type, object], ...]:
+    return (
+        (bpy.types.VIEW3D_MT_transform, _draw_transform_menu),
+        (bpy.types.VIEW3D_MT_edit_mesh_vertices, _draw_mesh_menu),
+        (bpy.types.VIEW3D_MT_edit_mesh_edges, _draw_mesh_menu),
+    )
+
+
 def register_menus() -> None:
-    bpy.types.VIEW3D_MT_edit_mesh_vertices.append(_draw_mesh_menu)
-    bpy.types.VIEW3D_MT_edit_mesh_edges.append(_draw_mesh_menu)
+    for menu, draw in _menu_draws():
+        menu.append(draw)
 
 
 def unregister_menus() -> None:
-    for menu in (bpy.types.VIEW3D_MT_edit_mesh_vertices, bpy.types.VIEW3D_MT_edit_mesh_edges):
+    for menu, draw in _menu_draws():
         try:
-            menu.remove(_draw_mesh_menu)
+            menu.remove(draw)
         except (ValueError, AttributeError):
             pass

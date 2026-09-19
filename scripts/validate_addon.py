@@ -120,8 +120,12 @@ def main() -> None:
         extension.register()
         registered = True
         _assert_keymap(extension)
+        from slide_rotate.ui import operators as operators_module
         from slide_rotate.ui.operators import MESH_OT_slide_rotate
         from slide_rotate.ui import overlay as overlay_module
+
+        for menu, draw in operators_module._menu_draws():
+            assert draw in menu.draw._draw_funcs
 
         assert not MESH_OT_slide_rotate.poll(bpy.context)
 

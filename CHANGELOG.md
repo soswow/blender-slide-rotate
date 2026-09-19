@@ -8,7 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Mesh → Transform → Slide Rotate, next to native Rotate.
 - X/Y/Z lock draws a thick anti-aliased infinite axis line through the pivot, colored like native R (theme Axis X/Y/Z mixed with the same light blend).
+
+### Fixed
+- Confirm and Redo Last no longer spam the Info editor with “vertices stayed still”.
 
 ## [0.1.0] - 2026-09-19
 
