@@ -8,9 +8,11 @@ M0–M4 are done. New work is Unreleased bugfixes/polish unless a milestone is o
 
 ## Changelog
 
-User-visible work must land with a bullet under `## [Unreleased]` in `CHANGELOG.md` **in the same change** as the code (Keep a Changelog: Added / Changed / Fixed / Removed).
+Changelog bullets are for **product** changes only: features and bugs the operator sees in Blender.
 
-Do this when the change affects the operator, rails, modal keys, overlay, install, keymap, or documented behavior. Skip it for refactors, tests, comments, and internal-only edits.
+A bullet under `## [Unreleased]` in `CHANGELOG.md` **in the same change** as the code (Keep a Changelog: Added / Changed / Fixed / Removed) when the add-on itself changes: operator, rails, modal keys, overlay, install, keymap, poll, or other in-Blender behavior.
+
+Skip it for README, docs, demos, screenshots, changelog wording, AGENTS/MILESTONES, refactors, tests, comments, and other repo-only edits. Updating “documented behavior” in the README is not a changelog item unless the add-on behavior also changed.
 
 Write one short user-facing line, not a commit subject. Describe the product behavior. Do not name user files or debug-scene geometry. Do not invent a version heading or bump `blender_manifest.toml` — that happens at release.
 

@@ -4,6 +4,10 @@ Blender 5.1 Edit Mode operator: rotate a vertex/edge/face selection around the c
 
 It should feel like native `R`, except vertices can only travel along automatically chosen surrounding edges (like a rotation-driven edge slide).
 
+[Watch a walkthrough on YouTube](https://youtu.be/qDgqyUuwZWk)
+
+[![Slide Rotate walkthrough on YouTube](docs/slide-rotate-demo.gif)](https://youtu.be/qDgqyUuwZWk)
+
 ## Requirements
 
 - Blender 5.1 or newer
