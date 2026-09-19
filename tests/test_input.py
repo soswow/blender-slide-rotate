@@ -8,13 +8,17 @@ from core.input import (
     apply_precision,
     modal_status_hints,
     mouse_delta_fallback,
+    mouse_delta_scale_fallback,
     numeric_handle_key,
+    numeric_value_number,
     numeric_value_radians,
     screen_angle,
+    screen_scale_factor,
     select_snap_increment,
     snap_angle,
     wrap_angle_delta,
 )
+from core.types import MODE_SCALE
 
 
 def test_wrap_angle_delta_crosses_pi() -> None:
@@ -149,3 +153,45 @@ def test_modal_status_hints_match_operator_keys() -> None:
     assert extend[1][0] == ("MOUSE_RMB", "EVENT_ESC")
     assert extend[4][0] == ("EVENT_C",)
     assert extend[5][0] == ("EVENT_X",)
+
+
+def test_screen_scale_factor_ratio_and_mirror() -> None:
+    assert screen_scale_factor(20.0, 0.0, 0.0, 0.0, 10.0, 0.0) == 2.0
+    assert screen_scale_factor(-10.0, 0.0, 0.0, 0.0, 10.0, 0.0) == -1.0
+    assert screen_scale_factor(0.5, 0.0, 0.0, 0.0, 1.0, 0.0) is None
+
+
+def test_mouse_delta_scale_fallback() -> None:
+    assert abs(mouse_delta_scale_fallback(0.0, 200.0, 200.0) - 2.0) < 1e-9
+
+
+def test_numeric_value_number_is_not_degrees() -> None:
+    state = NumericInput()
+    _, state = numeric_handle_key(state, "TWO", "")
+    assert numeric_value_number(state) == 2.0
+    assert numeric_value_radians(state) == math.radians(2.0)
+
+
+def test_status_text_scale_mode() -> None:
+    from core.input import format_status_text
+
+    text = format_status_text(
+        0.0,
+        "View",
+        True,
+        0,
+        NumericInput(),
+        mode=MODE_SCALE,
+        factor=1.5,
+    )
+    assert text == "Slide Scale | Scale: 1.500 | Axis: View | Extend Rails | C: Clamp"
+    typed = format_status_text(
+        0.0,
+        "Global X",
+        False,
+        0,
+        NumericInput(active=True, text="2"),
+        mode=MODE_SCALE,
+        factor=1.0,
+    )
+    assert typed == "Slide Scale | Scale: 2 | Axis: Global X | Clamped | C: Extend"

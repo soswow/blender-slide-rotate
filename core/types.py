@@ -6,6 +6,9 @@ from dataclasses import dataclass
 
 from .vec import Vec3
 
+MODE_ROTATE = "ROTATE"
+MODE_SCALE = "SCALE"
+
 
 @dataclass(frozen=True)
 class Rail:
@@ -20,7 +23,7 @@ class Rail:
 
 @dataclass
 class VertexRailState:
-    """Cached per-vertex data captured once when Slide Rotate starts."""
+    """Cached per-vertex data captured once when a Slide mode starts."""
 
     index: int
     original_world: Vec3

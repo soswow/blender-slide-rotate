@@ -16,22 +16,27 @@ from ..core.axis import (
     press_axis_key,
     view_toward_camera,
 )
-from ..core.geometry import apply_vertex_theta, build_vertex_state, transformed_world
+from ..core.geometry import apply_vertex_slide, build_vertex_state, transformed_world
 from ..core.input import (
+    DEFAULT_PRECISION_SNAP_SCALE,
+    DEFAULT_SNAP_SCALE,
     PrecisionAccumulator,
     accumulate_precision,
     format_status_text,
     modal_status_hints,
     mouse_delta_fallback,
+    mouse_delta_scale_fallback,
     numeric_handle_key,
+    numeric_value_number,
     numeric_value_radians,
     screen_angle,
+    screen_scale_factor,
     select_snap_increment,
     snap_angle,
     wrap_angle_delta,
 )
 from ..core.transforms import choose_pivot, local_from_world, world_from_local
-from ..core.types import AxisLockState, NumericInput, VertexRailState
+from ..core.types import MODE_ROTATE, MODE_SCALE, AxisLockState, NumericInput, VertexRailState
 from ..core.vec import Mat3, Mat4, Vec3, identity_mat3, invert_affine_mat4, normalize
 from . import overlay
 
@@ -173,21 +178,34 @@ def _orientation_matrix(context: bpy.types.Context, bm: bmesh.types.BMesh, matri
 
 
 class MESH_OT_slide_rotate(bpy.types.Operator):
-    """Rotate the selection around the pivot while vertices slide on connected rails."""
+    """Rotate or scale the selection around the pivot while vertices slide on connected rails."""
 
     bl_idname = "mesh.slide_rotate"
-    bl_label = "Slide Rotate"
+    bl_label = "Slide"
     bl_options = {"REGISTER", "UNDO", "GRAB_CURSOR", "BLOCKING"}
     bl_description = (
-        "Rotate selected vertices around the transform pivot while each vertex "
-        "slides along an automatically chosen connected edge"
+        "Rotate or scale selected vertices around the transform pivot while each "
+        "vertex slides along an automatically chosen connected edge"
     )
 
+    mode: EnumProperty(
+        name="Mode",
+        items=(
+            (MODE_ROTATE, "Rotate", "Rotate around the pivot like native R"),
+            (MODE_SCALE, "Scale", "Scale from the pivot like native S"),
+        ),
+        default=MODE_ROTATE,
+    )
     angle: FloatProperty(
         name="Angle",
         description="Shared rotation angle",
         default=0.0,
         subtype="ANGLE",
+    )
+    factor: FloatProperty(
+        name="Scale",
+        description="Shared scale factor from the pivot",
+        default=1.0,
     )
     extend_rails: BoolProperty(
         name="Extend Rails",
@@ -214,7 +232,11 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
 
     def draw(self, _context: bpy.types.Context) -> None:
         layout = self.layout
-        layout.prop(self, "angle")
+        layout.prop(self, "mode")
+        if self.mode == MODE_SCALE:
+            layout.prop(self, "factor")
+        else:
+            layout.prop(self, "angle")
         layout.prop(self, "extend_rails")
         layout.prop(self, "lock_letter")
 
@@ -226,11 +248,12 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
     def invoke(self, context: bpy.types.Context, event: bpy.types.Event):
         space = context.space_data
         if space is None or space.type != "VIEW_3D" or context.region_data is None:
-            self.report({"WARNING"}, "Slide Rotate requires a 3D Viewport")
+            self.report({"WARNING"}, "Slide requires a 3D Viewport")
             return {"CANCELLED"}
         self.lock_letter = "NONE"
         self.lock_stage = 0
         self.angle = 0.0
+        self.factor = 1.0
         if not self._prepare(context):
             return {"CANCELLED"}
         self._numeric = NumericInput()
@@ -280,14 +303,14 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
             self._axis_state = state
             self.lock_letter = state.letter if state.letter is not None else "NONE"
             self.lock_stage = state.stage
-            # Rails depend on the rotational tangent, so lock must re-score
-            # (face-interior through-rails only win for the matching axis).
+            # Rails depend on the rotate tangent / scale radial, so lock must
+            # re-score (face-interior through-rails only win for the matching axis).
             self._restore(context)
             if not self._prepare(context):
                 return self._cancel(context)
             self._sync_overlay()
             if not self._numeric.active:
-                self.angle = self._theta_from_mouse(context, event)
+                self._set_value_from_mouse(context, event)
             self._apply(context)
             self._update_header(context)
             return {"RUNNING_MODAL"}
@@ -296,14 +319,14 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
             handled, numeric = numeric_handle_key(self._numeric, event.type, unicode_char)
             if handled:
                 self._numeric = numeric
-                typed = numeric_value_radians(numeric)
+                typed = self._typed_value()
                 if typed is not None:
-                    self.angle = typed
+                    self._set_value(typed)
                     self._apply(context)
                 self._update_header(context)
                 return {"RUNNING_MODAL"}
         if event.type == "MOUSEMOVE" and not self._numeric.active:
-            self.angle = self._theta_from_mouse(context, event)
+            self._set_value_from_mouse(context, event)
             self._apply(context)
             self._update_header(context)
             return {"RUNNING_MODAL"}
@@ -327,7 +350,7 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
     def _prepare(self, context: bpy.types.Context) -> bool:
         obj = context.edit_object
         if obj is None or obj.type != "MESH":
-            self.report({"ERROR"}, "Slide Rotate requires a mesh in Edit Mode")
+            self.report({"ERROR"}, "Slide requires a mesh in Edit Mode")
             return False
         mesh = obj.data
         bm = bmesh.from_edit_mesh(mesh)
@@ -376,12 +399,47 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
             world = world_from_local(local, self._matrix_world)
             borrowed = _borrowed_rail_worlds(vert, selected_ids, self._matrix_world)
             states.append(
-                build_vertex_state(vert.index, local, world, neighbors, pivot, axis, borrowed)
+                build_vertex_state(
+                    vert.index,
+                    local,
+                    world,
+                    neighbors,
+                    pivot,
+                    axis,
+                    borrowed,
+                    mode=self.mode,
+                    axis_locked=self._axis_locked(),
+                )
             )
         self._states = states
         self._frozen_count = sum(0 if state.movable else 1 for state in states)
         self._numeric = getattr(self, "_numeric", NumericInput())
         return True
+
+    def _axis_locked(self) -> bool:
+        return self._axis_state.stage != 0 and self._axis_state.letter is not None
+
+    def _slide_value(self) -> float:
+        if self.mode == MODE_SCALE:
+            return float(self.factor)
+        return float(self.angle)
+
+    def _set_value(self, value: float) -> None:
+        if self.mode == MODE_SCALE:
+            self.factor = value
+        else:
+            self.angle = value
+
+    def _typed_value(self) -> float | None:
+        if self.mode == MODE_SCALE:
+            return numeric_value_number(self._numeric)
+        return numeric_value_radians(self._numeric)
+
+    def _set_value_from_mouse(self, context: bpy.types.Context, event: bpy.types.Event) -> None:
+        if self.mode == MODE_SCALE:
+            self.factor = self._factor_from_mouse(context, event)
+        else:
+            self.angle = self._theta_from_mouse(context, event)
 
     def _current_axis(self) -> Vec3:
         return locked_axis_vector(
@@ -440,13 +498,57 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
             theta = snap_angle(theta, increment)
         return theta
 
+    def _factor_from_mouse(self, context: bpy.types.Context, event: bpy.types.Event) -> float:
+        # Screen projection onto the invoke mouse radial around the pivot.
+        # Axis lock does not flip this; native S is a distance ratio, not an angle.
+        precision = bool(event.shift)
+        snap = bool(event.ctrl)
+        increment = select_snap_increment(
+            snap,
+            precision,
+            DEFAULT_SNAP_SCALE,
+            DEFAULT_PRECISION_SNAP_SCALE,
+        )
+        mouse_x = float(event.mouse_region_x)
+        mouse_y = float(event.mouse_region_y)
+        if self._pivot_2d is None:
+            raw = mouse_delta_scale_fallback(self._start_mouse_x, mouse_x)
+        else:
+            current = screen_scale_factor(
+                mouse_x,
+                mouse_y,
+                self._pivot_2d[0],
+                self._pivot_2d[1],
+                self._start_mouse_x,
+                self._start_mouse_y,
+            )
+            if current is None:
+                raw = mouse_delta_scale_fallback(self._start_mouse_x, mouse_x)
+            else:
+                raw = current
+        self._precision, delta = accumulate_precision(self._precision, raw - 1.0, precision)
+        factor = 1.0 + delta
+        if increment is not None:
+            factor = snap_angle(factor, increment)
+        return factor
+
     def _apply(self, context: bpy.types.Context) -> None:
         obj = context.edit_object
         bm = bmesh.from_edit_mesh(obj.data)
         bm.verts.ensure_lookup_table()
         axis = self._current_axis()
+        value = self._slide_value()
+        axis_locked = self._axis_locked()
         for state in self._states:
-            apply_vertex_theta(state, self._pivot, axis, float(self.angle), bool(self.extend_rails))
+            apply_vertex_slide(
+                state,
+                self._pivot,
+                axis,
+                value,
+                bool(self.extend_rails),
+                self.mode,
+                axis_locked,
+            )
             vert = bm.verts[state.index]
             local = local_from_world(
                 transformed_world(state),
@@ -479,6 +581,8 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
                 bool(self.extend_rails),
                 self._frozen_count,
                 self._numeric,
+                mode=self.mode,
+                factor=float(self.factor),
             )
         )
         self._redraw_statusbar(context)
@@ -531,9 +635,9 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
             context.area.tag_redraw()
 
     def _confirm(self, context: bpy.types.Context):
-        typed = numeric_value_radians(self._numeric)
+        typed = self._typed_value()
         if typed is not None:
-            self.angle = typed
+            self._set_value(typed)
             self._apply(context)
         self._teardown_modal(context)
         return {"FINISHED"}
@@ -542,6 +646,21 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
         self._restore(context)
         self._teardown_modal(context)
         return {"CANCELLED"}
+
+
+class VIEW3D_MT_slide_pie(bpy.types.Menu):
+    """Shift+Alt+R pie: pick Rotate or Scale, then the Slide modal starts."""
+
+    bl_label = "Slide"
+    bl_idname = "VIEW3D_MT_slide_pie"
+
+    def draw(self, _context: bpy.types.Context) -> None:
+        pie = self.layout.menu_pie()
+        pie.operator_context = "INVOKE_REGION_WIN"
+        # Slot order: first = left, second = right. Labels start with R / S
+        # so pie accelerators match native transform letters.
+        _add_slide_operator(pie, MODE_ROTATE, "Rotate")
+        _add_slide_operator(pie, MODE_SCALE, "Scale")
 
 
 class SR_OT_reload(bpy.types.Operator):
@@ -571,8 +690,18 @@ class SR_OT_reload(bpy.types.Operator):
         return {"FINISHED"}
 
 
+def _add_slide_operator(layout, mode: str, text: str):
+    operator = layout.operator(MESH_OT_slide_rotate.bl_idname, text=text)
+    operator.mode = mode
+    return operator
+
+
 def _draw_mesh_menu(self, _context: bpy.types.Context) -> None:
-    self.layout.operator(MESH_OT_slide_rotate.bl_idname, text="Slide Rotate")
+    # Use a child layout so INVOKE does not leak into later Mesh → Transform items.
+    column = self.layout.column()
+    column.operator_context = "INVOKE_REGION_WIN"
+    _add_slide_operator(column, MODE_ROTATE, "Slide Rotate")
+    _add_slide_operator(column, MODE_SCALE, "Slide Scale")
 
 
 def _draw_transform_menu(self, context: bpy.types.Context) -> None:
@@ -584,6 +713,7 @@ def _draw_transform_menu(self, context: bpy.types.Context) -> None:
 
 CLASSES = (
     MESH_OT_slide_rotate,
+    VIEW3D_MT_slide_pie,
     SR_OT_reload,
 )
 

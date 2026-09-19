@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Shift+Alt+R opens a Slide pie (Rotate left, Scale right). Flick, click, or tap R / S.
+- Slide Scale: scale from the transform pivot while vertices stay on automatically chosen rails.
+
+### Changed
+- Shift+Alt+R no longer starts Rotate immediately; pick Rotate from the pie (or Mesh → Transform).
+
+### Fixed
+- Axis-locked Slide Scale (for example Y lock at 0) now reaches the pivot plane along each rail instead of stopping slightly short when the rail is tilted.
+
 ## [0.1.1] - 2026-09-19
 
 ### Added

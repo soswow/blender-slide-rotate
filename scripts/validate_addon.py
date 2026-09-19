@@ -28,10 +28,11 @@ def load_extension_module():
 def _assert_keymap(extension) -> None:
     assert len(extension._addon_keymaps) == 1
     _keymap, item = extension._addon_keymaps[0]
-    assert item.idname == "mesh.slide_rotate"
+    assert item.idname == "wm.call_menu_pie"
     assert item.type == "R"
     assert item.shift and item.alt
     assert not item.ctrl
+    assert item.properties.name == "VIEW3D_MT_slide_pie"
 
 
 def _assert_face_interior_through_rails() -> None:
@@ -90,6 +91,40 @@ def _assert_face_interior_through_rails() -> None:
     bpy.context.tool_settings.transform_pivot_point = "MEDIAN_POINT"
 
 
+def _assert_scale_along_radial_rails() -> None:
+    """Opposite verts on X slide further out when scale factor is 2."""
+    mesh = bpy.data.meshes.new("slide_scale_probe")
+    obj = bpy.data.objects.new("slide_scale_probe", mesh)
+    bpy.context.collection.objects.link(obj)
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    builder = bmesh.new()
+    coords = ((-2.0, 0.0, 0.0), (-1.0, 0.0, 0.0), (1.0, 0.0, 0.0), (2.0, 0.0, 0.0))
+    verts = [builder.verts.new(coord) for coord in coords]
+    builder.edges.new((verts[0], verts[1]))
+    builder.edges.new((verts[2], verts[3]))
+    builder.to_mesh(mesh)
+    builder.free()
+
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.context.tool_settings.mesh_select_mode = (True, False, False)
+    bpy.context.tool_settings.transform_pivot_point = "MEDIAN_POINT"
+    edit_mesh = bmesh.from_edit_mesh(mesh)
+    edit_mesh.select_mode = {"VERT"}
+    edit_mesh.verts.ensure_lookup_table()
+    for vert in edit_mesh.verts:
+        vert.select = abs(abs(vert.co.x) - 1.0) < 1e-8
+    bmesh.update_edit_mesh(mesh)
+
+    bpy.ops.mesh.slide_rotate(mode="SCALE", factor=2.0, extend_rails=True)
+    edit_mesh = bmesh.from_edit_mesh(mesh)
+    edit_mesh.verts.ensure_lookup_table()
+    xs = sorted(float(vert.co.x) for vert in edit_mesh.verts if vert.select)
+    assert abs(xs[0] + 2.0) < 1e-5
+    assert abs(xs[1] - 2.0) < 1e-5
+    bpy.ops.object.mode_set(mode="OBJECT")
+
+
 def _build_loop_with_rails() -> bpy.types.Object:
     mesh = bpy.data.meshes.new("slide_rotate_probe")
     obj = bpy.data.objects.new("slide_rotate_probe", mesh)
@@ -122,11 +157,12 @@ def main() -> None:
         _assert_keymap(extension)
         from slide_rotate.core.input import modal_status_hints
         from slide_rotate.ui import operators as operators_module
-        from slide_rotate.ui.operators import MESH_OT_slide_rotate
+        from slide_rotate.ui.operators import MESH_OT_slide_rotate, VIEW3D_MT_slide_pie
 
         hints = modal_status_hints(True)
         assert ("EVENT_X",) in {icons for icons, _label in hints}
         assert MESH_OT_slide_rotate._set_status_bar is not None
+        assert VIEW3D_MT_slide_pie.bl_idname == "VIEW3D_MT_slide_pie"
         from slide_rotate.ui import overlay as overlay_module
 
         for menu, draw in operators_module._menu_draws():
@@ -170,6 +206,9 @@ def main() -> None:
         assert not MESH_OT_slide_rotate.poll(bpy.context)
 
         _assert_face_interior_through_rails()
+        assert not MESH_OT_slide_rotate.poll(bpy.context)
+
+        _assert_scale_along_radial_rails()
         assert not MESH_OT_slide_rotate.poll(bpy.context)
 
         extension.unregister()

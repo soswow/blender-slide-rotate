@@ -8,6 +8,8 @@ from .axis import (
     press_axis_key,
 )
 from .geometry import (
+    apply_vertex_scale,
+    apply_vertex_slide,
     apply_vertex_theta,
     build_vertex_state,
     choose_rail,
@@ -15,7 +17,9 @@ from .geometry import (
     overlay_axis_segment,
     overlay_segment,
     solve_rail_parameter,
+    solve_scale_rail_parameter,
     transformed_world,
+    unconstrained_scaled_point,
 )
 from .input import (
     PrecisionAccumulator,
@@ -24,24 +28,31 @@ from .input import (
     format_status_text,
     modal_status_hints,
     mouse_delta_fallback,
+    mouse_delta_scale_fallback,
     numeric_handle_key,
+    numeric_value_number,
     numeric_value_radians,
     screen_angle,
+    screen_scale_factor,
     select_snap_increment,
     snap_angle,
     wrap_angle_delta,
 )
 from .transforms import bounding_box_center, choose_pivot, local_from_world, median_point, world_from_local
-from .types import AxisLockState, NumericInput, Rail, VertexRailState
+from .types import AxisLockState, MODE_ROTATE, MODE_SCALE, NumericInput, Rail, VertexRailState
 
 __all__ = (
     "AxisLockState",
+    "MODE_ROTATE",
+    "MODE_SCALE",
     "NumericInput",
     "Rail",
     "VertexRailState",
     "PrecisionAccumulator",
     "accumulate_precision",
     "apply_precision",
+    "apply_vertex_scale",
+    "apply_vertex_slide",
     "apply_vertex_theta",
     "axis_overlay_color",
     "bounding_box_center",
@@ -57,16 +68,21 @@ __all__ = (
     "locked_axis_vector",
     "median_point",
     "mouse_delta_fallback",
+    "mouse_delta_scale_fallback",
     "numeric_handle_key",
+    "numeric_value_number",
     "numeric_value_radians",
     "overlay_axis_segment",
     "overlay_segment",
     "press_axis_key",
     "screen_angle",
+    "screen_scale_factor",
     "select_snap_increment",
     "snap_angle",
     "solve_rail_parameter",
+    "solve_scale_rail_parameter",
     "transformed_world",
+    "unconstrained_scaled_point",
     "world_from_local",
     "wrap_angle_delta",
 )

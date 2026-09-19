@@ -16,7 +16,12 @@ class VIEW3D_PT_slide_rotate(bpy.types.Panel):
 
     def draw(self, _context: bpy.types.Context) -> None:
         layout = self.layout
-        layout.operator("mesh.slide_rotate", icon="ORIENTATION_GIMBAL")
+        layout.operator_context = "INVOKE_REGION_WIN"
+        column = layout.column(align=True)
+        rotate = column.operator("mesh.slide_rotate", text="Slide Rotate", icon="ORIENTATION_GIMBAL")
+        rotate.mode = "ROTATE"
+        scale = column.operator("mesh.slide_rotate", text="Slide Scale", icon="FULLSCREEN_ENTER")
+        scale.mode = "SCALE"
         from .. import is_dev_install
 
         if is_dev_install():

@@ -23,7 +23,7 @@ bl_info = {
     "version": (0, 1, 0),
     "blender": (5, 1, 0),
     "location": "Mesh Edit Mode > Shift+Alt+R",
-    "description": "Rotate a selection around the pivot while vertices slide on connected edges",
+    "description": "Rotate or scale a selection around the pivot while vertices slide on connected edges",
     "category": "Mesh",
 }
 
@@ -53,12 +53,13 @@ def _register_keymaps() -> None:
         return
     keymap = keyconfig.keymaps.new(name="Mesh", space_type="EMPTY")
     item = keymap.keymap_items.new(
-        "mesh.slide_rotate",
+        "wm.call_menu_pie",
         "R",
         "PRESS",
         shift=True,
         alt=True,
     )
+    item.properties.name = "VIEW3D_MT_slide_pie"
     _addon_keymaps.append((keymap, item))
 
 

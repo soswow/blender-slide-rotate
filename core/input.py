@@ -6,7 +6,7 @@ import math
 
 from dataclasses import dataclass
 
-from .types import NumericInput
+from .types import MODE_ROTATE, MODE_SCALE, NumericInput
 
 # Status-bar chips during the modal (icon names match bpy UILayout icons).
 # Python cannot register a Blender modal keymap, so we draw these ourselves.
@@ -15,6 +15,8 @@ PRECISION_FACTOR = 0.1
 # Fallback when Blender snap increments are unavailable.
 DEFAULT_SNAP_RADIANS = math.radians(5.0)
 DEFAULT_PRECISION_SNAP_RADIANS = math.radians(1.0)
+DEFAULT_SNAP_SCALE = 0.1
+DEFAULT_PRECISION_SNAP_SCALE = 0.01
 
 _DIGIT_KEYS = {
     "ZERO": "0",
@@ -113,6 +115,41 @@ def select_snap_increment(
     return increment if increment > 0.0 else DEFAULT_SNAP_RADIANS
 
 
+def screen_scale_factor(
+    mouse_x: float,
+    mouse_y: float,
+    pivot_x: float,
+    pivot_y: float,
+    start_x: float,
+    start_y: float,
+) -> float | None:
+    """Signed scale factor from mouse vs invoke position around a screen pivot.
+
+    Projection onto the starting mouse radial, so crossing the pivot mirrors
+    (negative factor) like native S. None when the start point is too close
+    to the pivot to define a ratio.
+    """
+    start_dx = start_x - pivot_x
+    start_dy = start_y - pivot_y
+    denom = start_dx * start_dx + start_dy * start_dy
+    if denom < 4.0:
+        return None
+    current_dx = mouse_x - pivot_x
+    current_dy = mouse_y - pivot_y
+    return (current_dx * start_dx + current_dy * start_dy) / denom
+
+
+def mouse_delta_scale_fallback(
+    start_x: float,
+    mouse_x: float,
+    pixels_per_unit: float = 200.0,
+) -> float:
+    """Horizontal-drag fallback: 200px right is scale 2.0."""
+    if pixels_per_unit <= 0.0:
+        return 1.0
+    return 1.0 + (mouse_x - start_x) / pixels_per_unit
+
+
 def mouse_delta_fallback(start_x: float, mouse_x: float, pixels_per_radian: float = 200.0) -> float:
     """Horizontal-drag fallback when the pivot is off-screen or behind the camera."""
     if pixels_per_radian <= 0.0:
@@ -172,27 +209,46 @@ def format_status_text(
     extend_rails: bool,
     frozen: int,
     numeric: NumericInput,
+    mode: str = MODE_ROTATE,
+    factor: float = 1.0,
 ) -> str:
     """Viewport header line during the modal."""
-    degrees = math.degrees(angle)
-    if numeric.active:
-        shown = numeric.text if numeric.text else "0"
-        angle_part = f"Angle: {shown}°"
+    if mode == MODE_SCALE:
+        title = "Slide Scale"
+        if numeric.active:
+            shown = numeric.text if numeric.text else "1"
+            value_part = f"Scale: {shown}"
+        else:
+            value_part = f"Scale: {factor:.3f}"
     else:
-        angle_part = f"Angle: {degrees:.1f}°"
+        title = "Slide Rotate"
+        degrees = math.degrees(angle)
+        if numeric.active:
+            shown = numeric.text if numeric.text else "0"
+            value_part = f"Angle: {shown}°"
+        else:
+            value_part = f"Angle: {degrees:.1f}°"
     clamp_part = "Extend Rails | C: Clamp" if extend_rails else "Clamped | C: Extend"
     frozen_part = f" | Frozen: {frozen}" if frozen else ""
-    return f"Slide Rotate | {angle_part} | Axis: {axis_name} | {clamp_part}{frozen_part}"
+    return f"{title} | {value_part} | Axis: {axis_name} | {clamp_part}{frozen_part}"
 
 
 def numeric_value_radians(state: NumericInput) -> float | None:
     """Parse typed degrees into radians, or None while the buffer is incomplete."""
+    parsed = numeric_value_number(state)
+    if parsed is None:
+        return None
+    return math.radians(parsed)
+
+
+def numeric_value_number(state: NumericInput) -> float | None:
+    """Parse typed numeric input as a raw float, or None while incomplete."""
     if not state.active:
         return None
     text = state.text.strip()
     if text in {"", "-", ".", "-."}:
         return None
     try:
-        return math.radians(float(text))
+        return float(text)
     except ValueError:
         return None

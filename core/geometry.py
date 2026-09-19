@@ -1,7 +1,8 @@
-"""Rail selection and angle-preserving slide solve (no bpy).
+"""Rail selection and slide solve for rotate and scale (no bpy).
 
-Each selected vertex is locked to one cached guide rail. A shared rotation
-angle ``theta`` around a pivot/axis moves every vertex along its own rail.
+Each selected vertex is locked to one cached guide rail. Rotate shares an
+angle ``theta`` around a pivot/axis. Scale shares a factor from the pivot.
+Both write a parameter ``t`` along the same cached rail.
 """
 
 from __future__ import annotations
@@ -9,7 +10,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from .types import Rail, VertexRailState
+from .types import MODE_ROTATE, MODE_SCALE, Rail, VertexRailState
 from .vec import (
     EPS,
     Vec3,
@@ -60,6 +61,45 @@ def clamp_t(value: float, rail: Rail, extend_rails: bool) -> float:
 
 def rotational_tangent(pivot: Vec3, point: Vec3, axis: Vec3) -> Vec3 | None:
     return normalize(cross(axis, sub(point, pivot)))
+
+
+def rail_score_direction(
+    pivot: Vec3,
+    point: Vec3,
+    axis: Vec3,
+    mode: str = MODE_ROTATE,
+    axis_locked: bool = False,
+) -> Vec3 | None:
+    """Direction used to pick a rail for the current Slide mode.
+
+    Rotate scores against the rotational tangent in the plane of ``axis``.
+    Scale scores against the 3D radial from the pivot, or against the lock
+    axis once X/Y/Z is active (native S then only moves along that axis).
+    """
+    if mode == MODE_SCALE:
+        if axis_locked:
+            return normalize(axis)
+        return normalize(sub(point, pivot))
+    return rotational_tangent(pivot, point, axis)
+
+
+def unconstrained_scaled_point(
+    original: Vec3,
+    pivot: Vec3,
+    axis: Vec3,
+    factor: float,
+    axis_locked: bool,
+) -> Vec3:
+    """Native-S pose before projecting onto the rail."""
+    radial = sub(original, pivot)
+    if not axis_locked:
+        return add(pivot, scale(radial, factor))
+    unit = normalize(axis)
+    if unit is None:
+        return add(pivot, scale(radial, factor))
+    along = dot(radial, unit)
+    rest = sub(radial, scale(unit, along))
+    return add(pivot, add(scale(unit, along * factor), rest))
 
 
 def polar_angle(point: Vec3, pivot: Vec3, axis: Vec3) -> float | None:
@@ -160,6 +200,79 @@ def apply_vertex_theta(
     state.last_t = t_value
     state.used_fallback = used_fallback
     return state
+
+
+def solve_scale_rail_parameter(
+    pivot: Vec3,
+    axis: Vec3,
+    factor: float,
+    original: Vec3,
+    rail: Rail,
+    axis_locked: bool,
+) -> tuple[float, bool]:
+    """Return ``(t, used_fallback)`` for one vertex at scale ``factor``.
+
+    Unconstrained: closest-point projection of the native-S pose onto the rail.
+    Axis lock: intersect the rail with the plane whose lock-axis coordinate
+    matches that pose (so Y-lock factor 0 puts every vertex on the pivot Y,
+    even when the rail is slightly tilted). Fallback to projection if the
+    rail is parallel to the plane.
+    """
+    target = unconstrained_scaled_point(original, pivot, axis, factor, axis_locked)
+    fallback_t = project_t_on_rail(target, rail)
+    if not axis_locked:
+        return fallback_t, False
+    unit = normalize(axis)
+    if unit is None:
+        return fallback_t, True
+    denom = dot(rail.direction, unit)
+    if abs(denom) < PARALLEL_EPS:
+        return fallback_t, True
+    t_value = (dot(target, unit) - dot(rail.origin, unit)) / denom
+    if not math.isfinite(t_value) or abs(t_value) > MAX_ABS_T:
+        return fallback_t, True
+    return t_value, False
+
+
+def apply_vertex_scale(
+    state: VertexRailState,
+    pivot: Vec3,
+    axis: Vec3,
+    factor: float,
+    extend_rails: bool,
+    axis_locked: bool,
+) -> VertexRailState:
+    """Recompute one vertex from its original pose plus the shared scale factor."""
+    if not state.movable or state.rail is None:
+        state.last_t = 0.0
+        state.used_fallback = False
+        return state
+    t_value, used_fallback = solve_scale_rail_parameter(
+        pivot,
+        axis,
+        factor,
+        state.original_world,
+        state.rail,
+        axis_locked,
+    )
+    t_value = clamp_t(t_value, state.rail, extend_rails)
+    state.last_t = t_value
+    state.used_fallback = used_fallback
+    return state
+
+
+def apply_vertex_slide(
+    state: VertexRailState,
+    pivot: Vec3,
+    axis: Vec3,
+    value: float,
+    extend_rails: bool,
+    mode: str,
+    axis_locked: bool,
+) -> VertexRailState:
+    if mode == MODE_SCALE:
+        return apply_vertex_scale(state, pivot, axis, value, extend_rails, axis_locked)
+    return apply_vertex_theta(state, pivot, axis, value, extend_rails)
 
 
 def transformed_world(state: VertexRailState) -> Vec3:
@@ -271,24 +384,27 @@ def choose_rail(
     pivot: Vec3,
     axis: Vec3,
     borrowed_others: list[Vec3] | None = None,
+    mode: str = MODE_ROTATE,
+    axis_locked: bool = False,
 ) -> Rail | None:
     """Pick one bidirectional rail from unselected-end neighbors.
 
     Opposite colinear neighbors (typical mid-loop) become one clamp interval
-    spanning both segments. Rails are scored against the rotation-plane tangent
-    and cached by the caller — they must not change while the mouse moves.
+    spanning both segments. Rails are scored against the mode's guide
+    direction and cached by the caller — they must not change while the
+    mouse moves.
 
     ``borrowed_others`` are extra endpoints copied from coplanar face-island
     edges that leave the surface. Face-interior vertices have no 1-ring edge
     through the volume; those borrowed points supply that missing rail when
-    every physical neighbor is a poor match for the rotational tangent.
+    every physical neighbor is a poor match for the guide direction.
     """
-    tangent = rotational_tangent(pivot, vertex_world, axis)
-    rail, score = _best_rail(_rails_from_others(vertex_world, others), tangent)
+    guide = rail_score_direction(pivot, vertex_world, axis, mode, axis_locked)
+    rail, score = _best_rail(_rails_from_others(vertex_world, others), guide)
     if borrowed_others and score < WEAK_RAIL_SCORE:
         borrowed_rail, borrowed_score = _best_rail(
             _rails_from_others(vertex_world, borrowed_others),
-            tangent,
+            guide,
         )
         if borrowed_rail is not None and borrowed_score > score + 1e-9:
             return borrowed_rail
@@ -307,6 +423,8 @@ def build_vertex_state(
     pivot: Vec3,
     axis: Vec3,
     borrowed_worlds: list[Vec3] | None = None,
+    mode: str = MODE_ROTATE,
+    axis_locked: bool = False,
 ) -> VertexRailState:
     if is_near_pivot(world, pivot):
         return VertexRailState(
@@ -316,7 +434,15 @@ def build_vertex_state(
             rail=None,
             movable=False,
         )
-    rail = choose_rail(world, neighbor_worlds, pivot, axis, borrowed_worlds)
+    rail = choose_rail(
+        world,
+        neighbor_worlds,
+        pivot,
+        axis,
+        borrowed_worlds,
+        mode=mode,
+        axis_locked=axis_locked,
+    )
     return VertexRailState(
         index=index,
         original_world=world,

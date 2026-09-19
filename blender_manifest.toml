@@ -3,7 +3,7 @@ schema_version = "1.0.0"
 id = "slide_rotate"
 version = "0.1.1"
 name = "Slide Rotate"
-tagline = "Rotate a mesh selection while vertices slide on connected edges"
+tagline = "Rotate or scale a mesh selection while vertices slide on connected edges"
 maintainer = "Aleksandr 'Sasha' Motsjonov"
 type = "add-on"
 

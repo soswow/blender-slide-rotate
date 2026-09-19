@@ -1,6 +1,7 @@
 import math
 
 from core.geometry import (
+    apply_vertex_scale,
     apply_vertex_theta,
     build_vertex_state,
     choose_rail,
@@ -9,8 +10,9 @@ from core.geometry import (
     overlay_segment,
     solve_rail_parameter,
     transformed_world,
+    unconstrained_scaled_point,
 )
-from core.types import Rail, VertexRailState
+from core.types import MODE_SCALE, Rail, VertexRailState
 from core.vec import almost_equal
 
 
@@ -276,3 +278,112 @@ def test_recompute_from_original_avoids_drift() -> None:
     assert almost_equal(first, second)
     apply_vertex_theta(state, pivot, axis, 0.0, True)
     assert almost_equal(transformed_world(state), (1.0, 0.0, 0.0))
+
+
+def test_scale_prefers_radial_rail_over_tangent() -> None:
+    """Rotate wants the Y rail; scale wants the X rail from the same neighbors."""
+    vertex = (1.0, 0.0, 0.0)
+    others = [(1.0, 1.0, 0.0), (2.0, 0.0, 0.0)]
+    pivot = (0.0, 0.0, 0.0)
+    axis = (0.0, 0.0, 1.0)
+    rotate_rail = choose_rail(vertex, others, pivot, axis)
+    scale_rail = choose_rail(vertex, others, pivot, axis, mode=MODE_SCALE)
+    assert rotate_rail is not None and scale_rail is not None
+    assert abs(rotate_rail.direction[1]) > 0.9
+    assert abs(scale_rail.direction[0]) > 0.9
+
+
+def test_scale_along_radial_rail_doubles_distance() -> None:
+    pivot = (0.0, 0.0, 0.0)
+    axis = (0.0, 0.0, 1.0)
+    original = (1.0, 0.0, 0.0)
+    rail = Rail(origin=original, direction=(1.0, 0.0, 0.0), t_min=0.0, t_max=4.0)
+    state = VertexRailState(
+        index=0,
+        original_world=original,
+        original_local=original,
+        rail=rail,
+        movable=True,
+    )
+    apply_vertex_scale(state, pivot, axis, 2.0, True, axis_locked=False)
+    assert almost_equal(transformed_world(state), (2.0, 0.0, 0.0))
+    apply_vertex_scale(state, pivot, axis, 1.0, True, axis_locked=False)
+    assert almost_equal(transformed_world(state), original)
+
+
+def test_axis_locked_scale_zero_hits_pivot_plane_on_tilted_rail() -> None:
+    """Regression: Y-lock factor 0 must share the pivot Y, even if the rail is not exactly Y.
+
+    Closest-point projection of the unconstrained (x, pivot_y, z) pose onto a
+    tilted rail stops short of the plane; intersecting the rail with Y=pivot_y
+    is the rotate-style solve.
+    """
+    pivot = (0.0, 1.0, 0.0)
+    axis = (0.0, 1.0, 0.0)
+    original = (1.0, 3.0, 0.0)
+    length = (0.2 * 0.2 + 1.0) ** 0.5
+    direction = (0.2 / length, 1.0 / length, 0.0)
+    rail = Rail(origin=original, direction=direction, t_min=-10.0, t_max=10.0, merged=True)
+    state = VertexRailState(
+        index=0,
+        original_world=original,
+        original_local=original,
+        rail=rail,
+        movable=True,
+    )
+    apply_vertex_scale(state, pivot, axis, 0.0, True, axis_locked=True)
+    world = transformed_world(state)
+    assert abs(world[1] - pivot[1]) < 1e-9
+    # Stayed on the rail line.
+    offset = (world[0] - original[0], world[1] - original[1], world[2] - original[2])
+    assert abs(offset[0] * direction[1] - offset[1] * direction[0]) < 1e-9
+
+
+def test_axis_locked_scale_only_moves_along_lock_axis() -> None:
+    pivot = (0.0, 0.0, 0.0)
+    axis = (1.0, 0.0, 0.0)
+    original = (1.0, 1.0, 0.0)
+    assert almost_equal(
+        unconstrained_scaled_point(original, pivot, axis, 2.0, True),
+        (2.0, 1.0, 0.0),
+    )
+    rail = Rail(origin=original, direction=(1.0, 0.0, 0.0), t_min=-4.0, t_max=4.0)
+    state = VertexRailState(
+        index=0,
+        original_world=original,
+        original_local=original,
+        rail=rail,
+        movable=True,
+    )
+    apply_vertex_scale(state, pivot, axis, 2.0, True, axis_locked=True)
+    world = transformed_world(state)
+    assert abs(world[0] - 2.0) < 1e-9
+    assert abs(world[1] - 1.0) < 1e-9
+
+
+def test_scale_clamp_stops_at_physical_end() -> None:
+    pivot = (0.0, 0.0, 0.0)
+    axis = (0.0, 0.0, 1.0)
+    original = (1.0, 0.0, 0.0)
+    rail = Rail(origin=original, direction=(1.0, 0.0, 0.0), t_min=0.0, t_max=0.25)
+    state = VertexRailState(
+        index=0,
+        original_world=original,
+        original_local=original,
+        rail=rail,
+        movable=True,
+    )
+    apply_vertex_scale(state, pivot, axis, 2.0, False, axis_locked=False)
+    assert almost_equal(transformed_world(state), (1.25, 0.0, 0.0))
+
+
+def test_locked_scale_scores_rails_along_axis() -> None:
+    vertex = (1.0, 1.0, 0.0)
+    others = [(2.0, 1.0, 0.0), (1.0, 2.0, 0.0)]
+    pivot = (0.0, 0.0, 0.0)
+    unlocked = choose_rail(vertex, others, pivot, (1.0, 0.0, 0.0), mode=MODE_SCALE, axis_locked=False)
+    locked = choose_rail(vertex, others, pivot, (1.0, 0.0, 0.0), mode=MODE_SCALE, axis_locked=True)
+    assert unlocked is not None and locked is not None
+    # Unlocked uniform scale prefers the radial (roughly 1,1); both score, but
+    # X-lock should prefer the X rail.
+    assert abs(locked.direction[0]) > 0.9
