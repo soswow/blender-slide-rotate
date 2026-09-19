@@ -18,8 +18,10 @@ from ..core.axis import (
 )
 from ..core.geometry import apply_vertex_theta, build_vertex_state, transformed_world
 from ..core.input import (
-    apply_precision,
+    PrecisionAccumulator,
+    accumulate_precision,
     format_status_text,
+    modal_status_hints,
     mouse_delta_fallback,
     numeric_handle_key,
     numeric_value_radians,
@@ -232,6 +234,7 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
         if not self._prepare(context):
             return {"CANCELLED"}
         self._numeric = NumericInput()
+        self._precision = PrecisionAccumulator()
         self._start_mouse_x = float(event.mouse_region_x)
         self._start_mouse_y = float(event.mouse_region_y)
         region = context.region
@@ -256,6 +259,7 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
         overlay.ensure_draw_handler()
         context.window.cursor_modal_set("SCROLL_XY")
         context.window_manager.modal_handler_add(self)
+        self._set_status_bar(context)
         self._update_header(context)
         context.area.tag_redraw()
         return {"RUNNING_MODAL"}
@@ -419,16 +423,14 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
         mouse_x = float(event.mouse_region_x)
         mouse_y = float(event.mouse_region_y)
         if self._pivot_2d is None or self._initial_screen_angle is None:
-            delta = mouse_delta_fallback(self._start_mouse_x, mouse_x)
-            theta = apply_precision(delta, precision)
+            raw = mouse_delta_fallback(self._start_mouse_x, mouse_x)
         else:
             current = screen_angle(mouse_x, mouse_y, self._pivot_2d[0], self._pivot_2d[1])
             if current is None:
-                delta = mouse_delta_fallback(self._start_mouse_x, mouse_x)
-                theta = apply_precision(delta, precision)
+                raw = mouse_delta_fallback(self._start_mouse_x, mouse_x)
             else:
-                delta = wrap_angle_delta(self._initial_screen_angle, current)
-                theta = apply_precision(delta, precision)
+                raw = wrap_angle_delta(self._initial_screen_angle, current)
+        self._precision, theta = accumulate_precision(self._precision, raw, precision)
         if self._axis_state.stage != 0 and self._axis_state.letter is not None:
             theta *= mouse_angle_axis_sign(
                 self._current_axis(),
@@ -479,6 +481,36 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
                 self._numeric,
             )
         )
+        self._redraw_statusbar(context)
+
+    def _set_status_bar(self, context: bpy.types.Context) -> None:
+        workspace = context.workspace
+        if workspace is None:
+            return
+        operator = self
+
+        def _draw_status(header, _context: bpy.types.Context) -> None:
+            layout = header.layout
+            for icons, label in modal_status_hints(bool(operator.extend_rails)):
+                row = layout.row(align=True)
+                for icon in icons:
+                    row.label(text="", icon=icon)
+                row.label(text=label)
+
+        workspace.status_text_set(_draw_status)
+
+    def _clear_status_bar(self, context: bpy.types.Context) -> None:
+        workspace = context.workspace
+        if workspace is not None:
+            workspace.status_text_set(None)
+
+    def _redraw_statusbar(self, context: bpy.types.Context) -> None:
+        screen = context.screen
+        if screen is None:
+            return
+        for area in screen.areas:
+            if area.type == "STATUSBAR":
+                area.tag_redraw()
 
     def _sync_overlay(self) -> None:
         overlay.set_rails(self._states, bool(self.extend_rails))
@@ -490,6 +522,7 @@ class MESH_OT_slide_rotate(bpy.types.Operator):
 
     def _teardown_modal(self, context: bpy.types.Context) -> None:
         overlay.remove_draw_handler()
+        self._clear_status_bar(context)
         if context.area is not None:
             context.area.header_text_set(None)
         if context.window is not None:

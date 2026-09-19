@@ -43,14 +43,14 @@ While dragging:
 | Key | Action |
 | --- | --- |
 | Mouse | Change angle around the projected pivot |
-| Shift | Precision |
+| Shift | Precision (further motion only; does not jump back to the start pose) |
 | Ctrl | Angle snap (scene 3D increment; Shift+Ctrl uses the precision increment) |
 | C | Toggle Clamp / Extend Rails (extend is the default) |
 | X / Y / Z | Axis lock like native `R` (orientation → Global/Local flip → View). Rails are re-chosen for the new axis. |
 | 0–9, `.`, `-` | Type an angle in degrees |
 | Backspace | Edit typed input |
 
-The header shows the angle, axis, and clamp state. Yellow overlay lines are the cached rails. Locking X, Y, or Z also draws a thick anti-aliased infinite axis through the pivot, using the same colors as native `R` (theme **Axis X/Y/Z**, mixed toward light gray).
+The 3D View header shows the angle, axis, and clamp state. The status bar lists the same kind of modal keys as native `R` (confirm, cancel, Shift precision, Ctrl snap, C clamp, X/Y/Z). Yellow overlay lines are the cached rails. Locking X, Y, or Z also draws a thick anti-aliased infinite axis through the pivot, using the same colors as native `R` (theme **Axis X/Y/Z**, mixed toward light gray).
 
 ## Geometry
 

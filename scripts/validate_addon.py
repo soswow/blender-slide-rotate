@@ -120,8 +120,13 @@ def main() -> None:
         extension.register()
         registered = True
         _assert_keymap(extension)
+        from slide_rotate.core.input import modal_status_hints
         from slide_rotate.ui import operators as operators_module
         from slide_rotate.ui.operators import MESH_OT_slide_rotate
+
+        hints = modal_status_hints(True)
+        assert ("EVENT_X",) in {icons for icons, _label in hints}
+        assert MESH_OT_slide_rotate._set_status_bar is not None
         from slide_rotate.ui import overlay as overlay_module
 
         for menu, draw in operators_module._menu_draws():

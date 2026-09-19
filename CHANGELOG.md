@@ -8,11 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Status bar shows Confirm, Cancel, Precision, Snap, Clamp, and X/Y/Z while Slide Rotate is running, like native R.
 - Mesh → Transform → Slide Rotate, next to native Rotate.
 - X/Y/Z lock draws a thick anti-aliased infinite axis line through the pivot, colored like native R (theme Axis X/Y/Z mixed with the same light blend).
 
 ### Fixed
 - Confirm and Redo Last no longer spam the Info editor with “vertices stayed still”.
+- Pressing Shift after moving keeps the current angle and only slows further mouse motion.
 
 ## [0.1.0] - 2026-09-19
 

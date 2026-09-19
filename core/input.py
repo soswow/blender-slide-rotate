@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import math
 
+from dataclasses import dataclass
+
 from .types import NumericInput
+
+# Status-bar chips during the modal (icon names match bpy UILayout icons).
+# Python cannot register a Blender modal keymap, so we draw these ourselves.
 
 PRECISION_FACTOR = 0.1
 # Fallback when Blender snap increments are unavailable.
@@ -56,6 +61,36 @@ def screen_angle(mouse_x: float, mouse_y: float, pivot_x: float, pivot_y: float)
 
 def apply_precision(delta: float, precision: bool, factor: float = PRECISION_FACTOR) -> float:
     return delta * factor if precision else delta
+
+
+@dataclass
+class PrecisionAccumulator:
+    """Rebase mouse deltas when Shift is pressed or released.
+
+    Native R keeps the current angle and only scales further motion. Scaling
+    the whole gesture from invoke would jump back toward the start pose.
+    """
+
+    base: float = 0.0
+    anchor: float = 0.0
+    precision: bool = False
+    primed: bool = False
+
+
+def accumulate_precision(
+    state: PrecisionAccumulator,
+    raw: float,
+    precision: bool,
+    factor: float = PRECISION_FACTOR,
+) -> tuple[PrecisionAccumulator, float]:
+    """Return updated state and theta = committed + scaled motion since last Shift change."""
+    if not state.primed:
+        state = PrecisionAccumulator(base=0.0, anchor=0.0, precision=precision, primed=True)
+    elif precision != state.precision:
+        committed = state.base + apply_precision(raw - state.anchor, state.precision, factor)
+        state = PrecisionAccumulator(base=committed, anchor=raw, precision=precision, primed=True)
+    theta = state.base + apply_precision(raw - state.anchor, state.precision, factor)
+    return state, theta
 
 
 def snap_angle(theta: float, increment: float) -> float:
@@ -114,6 +149,21 @@ def numeric_handle_key(state: NumericInput, event_type: str, unicode_char: str) 
         return True, NumericInput(active=True, text="-" + state.text)
 
     return False, state
+
+
+def modal_status_hints(extend_rails: bool) -> tuple[tuple[tuple[str, ...], str], ...]:
+    """Key chips for the workspace status bar, same idea as native R."""
+    clamp_label = "Clamp" if extend_rails else "Extend Rails"
+    return (
+        (("MOUSE_LMB", "EVENT_RETURN"), "Confirm"),
+        (("MOUSE_RMB", "EVENT_ESC"), "Cancel"),
+        (("EVENT_SHIFT",), "Precision"),
+        (("EVENT_CTRL",), "Snap"),
+        (("EVENT_C",), clamp_label),
+        (("EVENT_X",), "X Axis"),
+        (("EVENT_Y",), "Y Axis"),
+        (("EVENT_Z",), "Z Axis"),
+    )
 
 
 def format_status_text(

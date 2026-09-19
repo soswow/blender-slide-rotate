@@ -3,7 +3,10 @@ import math
 from core.input import (
     DEFAULT_SNAP_RADIANS,
     NumericInput,
+    PrecisionAccumulator,
+    accumulate_precision,
     apply_precision,
+    modal_status_hints,
     mouse_delta_fallback,
     numeric_handle_key,
     numeric_value_radians,
@@ -38,6 +41,27 @@ def test_screen_angle_and_close_pivot() -> None:
 def test_precision_scales_delta() -> None:
     assert apply_precision(2.0, False) == 2.0
     assert apply_precision(2.0, True) == 0.2
+
+
+def test_precision_after_move_keeps_current_angle() -> None:
+    """Regression: Shift must not scale the whole gesture back toward zero."""
+    state = PrecisionAccumulator()
+    state, theta = accumulate_precision(state, 1.0, False)
+    assert abs(theta - 1.0) < 1e-12
+    state, theta = accumulate_precision(state, 1.0, True)
+    assert abs(theta - 1.0) < 1e-12
+    state, theta = accumulate_precision(state, 1.1, True)
+    assert abs(theta - 1.01) < 1e-12
+    state, theta = accumulate_precision(state, 1.1, False)
+    assert abs(theta - 1.01) < 1e-12
+    state, theta = accumulate_precision(state, 1.2, False)
+    assert abs(theta - 1.11) < 1e-12
+
+
+def test_precision_from_invoke_still_scales_whole_motion() -> None:
+    state = PrecisionAccumulator()
+    state, theta = accumulate_precision(state, 2.0, True)
+    assert abs(theta - 0.2) < 1e-12
 
 
 def test_snap_angle_five_degrees() -> None:
@@ -104,3 +128,24 @@ def test_status_text_extend_and_frozen() -> None:
     assert "Frozen: 2" in text
     typed = format_status_text(0.0, "Global X", False, 0, NumericInput(active=True, text="45"))
     assert typed == "Slide Rotate | Angle: 45° | Axis: Global X | Clamped | C: Extend"
+
+
+def test_modal_status_hints_match_operator_keys() -> None:
+    extend = modal_status_hints(True)
+    clamp = modal_status_hints(False)
+    labels = [label for _icons, label in extend]
+    assert labels == [
+        "Confirm",
+        "Cancel",
+        "Precision",
+        "Snap",
+        "Clamp",
+        "X Axis",
+        "Y Axis",
+        "Z Axis",
+    ]
+    assert clamp[4][1] == "Extend Rails"
+    assert extend[0][0] == ("MOUSE_LMB", "EVENT_RETURN")
+    assert extend[1][0] == ("MOUSE_RMB", "EVENT_ESC")
+    assert extend[4][0] == ("EVENT_C",)
+    assert extend[5][0] == ("EVENT_X",)

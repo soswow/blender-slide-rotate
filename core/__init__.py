@@ -18,8 +18,11 @@ from .geometry import (
     transformed_world,
 )
 from .input import (
+    PrecisionAccumulator,
+    accumulate_precision,
     apply_precision,
     format_status_text,
+    modal_status_hints,
     mouse_delta_fallback,
     numeric_handle_key,
     numeric_value_radians,
@@ -36,6 +39,8 @@ __all__ = (
     "NumericInput",
     "Rail",
     "VertexRailState",
+    "PrecisionAccumulator",
+    "accumulate_precision",
     "apply_precision",
     "apply_vertex_theta",
     "axis_overlay_color",
@@ -45,6 +50,7 @@ __all__ = (
     "choose_rail",
     "clamp_t",
     "format_status_text",
+    "modal_status_hints",
     "local_from_world",
     "lock_axis_overlay_letter",
     "lock_label",
