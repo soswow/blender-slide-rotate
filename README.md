@@ -10,7 +10,7 @@ It should feel like native `R`, except vertices can only travel along automatica
 
 ## Installation
 
-Download a zip or use this checkout.
+Download the zip from GitHub Releases (after a tagged ship), or use this checkout.
 
 **From Disk:** Blender **Edit → Preferences → Get Extensions → Install from Disk**, then enable **Slide Rotate**.
 
@@ -73,12 +73,22 @@ Coordinates are solved in world space and written back to BMesh local space so r
 ## Development tests
 
 ```sh
-python3 -m pytest
+./scripts/run-unittests.sh
 "/Applications/Blender 5.1.app/Contents/MacOS/blender" \
   --factory-startup -b --python scripts/validate_addon.py
 ```
 
 See [AGENTS.md](AGENTS.md) for changelog and unit-test rules, and [MILESTONES.md](MILESTONES.md) for session progress.
+
+## Release
+
+On a clean `main`, with Unreleased changelog bullets and a GitHub `origin` remote:
+
+```sh
+./scripts/release.sh 0.1.0
+```
+
+That bumps `blender_manifest.toml` if needed, moves `## [Unreleased]` into a dated section, commits, tags `v0.1.0`, and pushes. The **Release** GitHub Action builds `slide_rotate-0.1.0.zip` with Blender’s extension builder and publishes it on the GitHub Release. Do not attach zips by hand unless Actions failed.
 
 ## Manual checks
 

@@ -20,6 +20,7 @@ paths_exclude_pattern = [
   "__pycache__/",
   "/.git/",
   "/.github/",
+  "/.cursor/",
   "/.venv/",
   "/.pytest_cache/",
   "/*.zip",

@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- GitHub Release zip from `./scripts/release.sh` (tagged `v*` builds via Actions).
 - Face-interior vertices borrow through-rails from the coplanar face so they slide with the boundary instead of along in-face edges.
 - Slide Rotate mesh operator: rotate a selection around the transform pivot while vertices slide on automatically chosen connected edges.
 - Shift+Alt+R Mesh Edit shortcut, Vertex/Edge menus, F3 search, and a tiny 3D View sidebar with a development Reload button.

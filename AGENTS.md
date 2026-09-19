@@ -25,6 +25,8 @@ If `[Unreleased]` has no matching subsection yet, add it. Leave dated `## [x.y.z
 
 Do not rewrite a dated changelog bullet. If later work revises that behavior, add a new **Fixed** / **Changed** / **Removed** line. Rewrite an **Unreleased** bullet in place only when it leaked a debug scene.
 
+To ship: `./scripts/release.sh 0.1.0` on a clean `main` with a GitHub `origin` remote. That cuts Unreleased, bumps `blender_manifest.toml` when the version changes, tags `v0.1.0`, and pushes. GitHub Actions builds the zip and creates the GitHub Release.
+
 ## Unit and regression tests
 
 Strict, not optional.
@@ -35,9 +37,9 @@ Strict, not optional.
 - Do not special-case a user `.blend` in tests. Use generic synthetic geometry.
 
 ```sh
-python3 -m pytest
+./scripts/run-unittests.sh
 "/Applications/Blender 5.1.app/Contents/MacOS/blender" \
-  --factory-startup -b --python scripts/validate_addon.py
+ --factory-startup -b --python scripts/validate_addon.py
 ```
 
 ## Where code lives
@@ -78,6 +80,6 @@ Rails and the polar solve in `core/geometry.py` are view-independent. “Lock fo
 
 ## Do not
 
-- Commit, push, tag, or release unless explicitly asked.
+- Commit, push, tag, or release unless explicitly asked (use `./scripts/release.sh` when asked to release).
 - Unregister the add-on from inside an operator execute (use `schedule_reload()`).
 - Steal `R`, `Shift+R`, `Ctrl+R`, or `Shift+Ctrl+R`. Default shortcut is **Shift+Alt+R** on the Mesh keymap.
