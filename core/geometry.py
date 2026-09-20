@@ -1,9 +1,10 @@
-"""Rail selection and slide solve for rotate, scale, and flatten (no bpy).
+"""Rail selection and slide solve for rotate, scale, flatten, and curve (no bpy).
 
 Each selected vertex is locked to one cached guide rail. Rotate shares an
 angle ``theta`` around a pivot/axis. Scale shares a factor from the pivot.
 Flatten shares a factor toward a plane (0 = start pose, 1 = on the plane).
-All three write a parameter ``t`` along the same cached rail.
+Curve shares a factor toward a fitted loop/path (0 = start pose, 1 = on the
+curve). All four write a parameter ``t`` along the same cached rail.
 """
 
 from __future__ import annotations
@@ -11,7 +12,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from .types import MODE_FLATTEN, MODE_ROTATE, MODE_SCALE, Rail, VertexRailState
+from .curve import unconstrained_curved_point
+from .types import MODE_CURVE, MODE_FLATTEN, MODE_ROTATE, MODE_SCALE, Rail, VertexRailState
 from .vec import (
     EPS,
     Mat3,
@@ -76,8 +78,10 @@ def rail_score_direction(
     Scale scores against the 3D radial from the pivot, or against the lock
     axis once X/Y/Z is active (native S then only moves along that axis).
     Flatten scores against the plane normal (``axis`` is that normal).
+    Curve scores against ``axis`` as well unless the caller passes a per-vertex
+    guide (the vector from the start pose toward the fitted sample).
     """
-    if mode == MODE_FLATTEN:
+    if mode in {MODE_FLATTEN, MODE_CURVE}:
         return normalize(axis)
     if mode == MODE_SCALE:
         if axis_locked:
@@ -288,6 +292,25 @@ def point_on_rail(rail: Rail, t_value: float) -> Vec3:
     return add(rail.origin, scale(rail.direction, t_value))
 
 
+def closest_point_on_rail_to_polyline(rail: Rail, polyline: list[Vec3]) -> Vec3:
+    """Point on the infinite rail that comes closest to any sample of ``polyline``.
+
+    Same-parameter samples on a fitted curve can sit far from a vertex's rail.
+    Factor 1 should be the closest the rail can get to the imaginary line.
+    """
+    if not polyline:
+        return rail.origin
+    best_t = project_t_on_rail(polyline[0], rail)
+    best_dist = length_squared(sub(polyline[0], point_on_rail(rail, best_t)))
+    for point in polyline[1:]:
+        t_value = project_t_on_rail(point, rail)
+        dist = length_squared(sub(point, point_on_rail(rail, t_value)))
+        if dist < best_dist:
+            best_dist = dist
+            best_t = t_value
+    return point_on_rail(rail, best_t)
+
+
 def apply_vertex_theta(
     state: VertexRailState,
     pivot: Vec3,
@@ -427,6 +450,46 @@ def apply_vertex_flatten(
     return state
 
 
+def solve_curve_rail_parameter(
+    original: Vec3,
+    target: Vec3,
+    factor: float,
+    rail: Rail,
+) -> tuple[float, bool]:
+    """Return ``(t, used_fallback)`` for one vertex at curve ``factor``.
+
+    Closest point on the rail to the unconstrained lerp. A flatten-style plane
+    hit along ``target - original`` explodes when that vector is almost
+    perpendicular to the rail (typical: curve sample sits along the loop,
+    rails leave the loop).
+    """
+    unconstrained = unconstrained_curved_point(original, target, factor)
+    return project_t_on_rail(unconstrained, rail), False
+
+
+def apply_vertex_curve(
+    state: VertexRailState,
+    target: Vec3,
+    factor: float,
+    extend_rails: bool,
+) -> VertexRailState:
+    """Recompute one vertex from its original pose plus the shared curve factor."""
+    if not state.movable or state.rail is None:
+        state.last_t = 0.0
+        state.used_fallback = False
+        return state
+    t_value, used_fallback = solve_curve_rail_parameter(
+        state.original_world,
+        target,
+        factor,
+        state.rail,
+    )
+    t_value = clamp_t(t_value, state.rail, extend_rails)
+    state.last_t = t_value
+    state.used_fallback = used_fallback
+    return state
+
+
 def apply_vertex_slide(
     state: VertexRailState,
     pivot: Vec3,
@@ -436,7 +499,11 @@ def apply_vertex_slide(
     mode: str,
     axis_locked: bool,
     plane_origin: Vec3 | None = None,
+    curve_target: Vec3 | None = None,
 ) -> VertexRailState:
+    if mode == MODE_CURVE:
+        target = curve_target if curve_target is not None else state.original_world
+        return apply_vertex_curve(state, target, value, extend_rails)
     if mode == MODE_FLATTEN:
         origin = plane_origin if plane_origin is not None else pivot
         return apply_vertex_flatten(state, origin, axis, value, extend_rails)
@@ -556,6 +623,7 @@ def choose_rail(
     borrowed_others: list[Vec3] | None = None,
     mode: str = MODE_ROTATE,
     axis_locked: bool = False,
+    guide_override: Vec3 | None = None,
 ) -> Rail | None:
     """Pick one bidirectional rail from unselected-end neighbors.
 
@@ -571,8 +639,14 @@ def choose_rail(
     poorly against the rotational tangent — otherwise a loop vertex that
     happens to sit on the pivot's lock-axis plane would slide on a phantom
     through-rail instead of its real edges.
+
+    ``guide_override`` replaces the mode's default score direction (Slide Curve
+    uses the vector from the vertex toward its fitted sample).
     """
-    guide = rail_score_direction(pivot, vertex_world, axis, mode, axis_locked)
+    if guide_override is not None:
+        guide = normalize(guide_override)
+    else:
+        guide = rail_score_direction(pivot, vertex_world, axis, mode, axis_locked)
     rail, _score = _best_rail(_rails_from_others(vertex_world, others), guide)
     if rail is not None:
         return rail
@@ -600,8 +674,9 @@ def build_vertex_state(
     borrowed_worlds: list[Vec3] | None = None,
     mode: str = MODE_ROTATE,
     axis_locked: bool = False,
+    guide_override: Vec3 | None = None,
 ) -> VertexRailState:
-    if mode != MODE_FLATTEN and is_near_pivot(world, pivot):
+    if mode not in {MODE_FLATTEN, MODE_CURVE} and is_near_pivot(world, pivot):
         return VertexRailState(
             index=index,
             original_world=world,
@@ -617,6 +692,7 @@ def build_vertex_state(
         borrowed_worlds,
         mode=mode,
         axis_locked=axis_locked,
+        guide_override=guide_override,
     )
     return VertexRailState(
         index=index,

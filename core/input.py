@@ -6,7 +6,7 @@ import math
 
 from dataclasses import dataclass
 
-from .types import MODE_FLATTEN, MODE_ROTATE, MODE_SCALE, NumericInput
+from .types import MODE_CURVE, MODE_FLATTEN, MODE_ROTATE, MODE_SCALE, NumericInput
 
 # Status-bar chips during the modal (icon names match bpy UILayout icons).
 # Python cannot register a Blender modal keymap, so we draw these ourselves.
@@ -150,6 +150,21 @@ def mouse_delta_scale_fallback(
     return 1.0 + (mouse_x - start_x) / pixels_per_unit
 
 
+def factor_from_scale_ratio(ratio: float, identity: float) -> float:
+    """Map a native-S radial ratio onto a modal factor.
+
+    Invoke is always ratio 1. Scale/Flatten use identity 1 (start on the
+    unconstrained pose / plane). Curve uses identity 0 (start pose); dragging
+    away from the pivot increases toward the fitted curve.
+    """
+    return identity + (ratio - 1.0)
+
+
+def clamp_curve_factor(factor: float) -> float:
+    """Curve only interpolates from the start pose (0) to the fitted curve (1)."""
+    return min(1.0, max(0.0, float(factor)))
+
+
 def mouse_delta_fallback(start_x: float, mouse_x: float, pixels_per_radian: float = 200.0) -> float:
     """Horizontal-drag fallback when the pivot is off-screen or behind the camera."""
     if pixels_per_radian <= 0.0:
@@ -188,10 +203,13 @@ def numeric_handle_key(state: NumericInput, event_type: str, unicode_char: str) 
     return False, state
 
 
-def modal_status_hints(extend_rails: bool) -> tuple[tuple[tuple[str, ...], str], ...]:
+def modal_status_hints(
+    extend_rails: bool,
+    mode: str = MODE_ROTATE,
+) -> tuple[tuple[tuple[str, ...], str], ...]:
     """Key chips for the workspace status bar, same idea as native R."""
     clamp_label = "Clamp" if extend_rails else "Extend Rails"
-    return (
+    chips: tuple[tuple[tuple[str, ...], str], ...] = (
         (("MOUSE_LMB", "EVENT_RETURN"), "Confirm"),
         (("MOUSE_RMB", "EVENT_ESC"), "Cancel"),
         (("EVENT_SHIFT",), "Precision"),
@@ -201,6 +219,9 @@ def modal_status_hints(extend_rails: bool) -> tuple[tuple[tuple[str, ...], str],
         (("EVENT_Y",), "Y Axis"),
         (("EVENT_Z",), "Z Axis"),
     )
+    if mode == MODE_CURVE:
+        chips = chips + ((("EVENT_LEFTBRACKET", "EVENT_RIGHTBRACKET"), "Order"),)
+    return chips
 
 
 def format_status_text(
@@ -211,6 +232,7 @@ def format_status_text(
     numeric: NumericInput,
     mode: str = MODE_ROTATE,
     factor: float = 1.0,
+    curve_order: int = 3,
 ) -> str:
     """Viewport header line during the modal."""
     if mode == MODE_SCALE:
@@ -227,6 +249,13 @@ def format_status_text(
             value_part = f"Flatten: {shown}"
         else:
             value_part = f"Flatten: {factor:.3f}"
+    elif mode == MODE_CURVE:
+        title = "Slide Curve"
+        if numeric.active:
+            shown = numeric.text if numeric.text else "0"
+            value_part = f"Curve: {shown} | Order: {curve_order}"
+        else:
+            value_part = f"Curve: {factor:.3f} | Order: {curve_order}"
     else:
         title = "Slide Rotate"
         degrees = math.degrees(angle)

@@ -169,6 +169,46 @@ def _assert_flatten_along_normal_rails() -> None:
     bpy.context.scene.cursor.location = (0.0, 0.0, 0.0)
 
 
+def _assert_curve_order_one_straightens_path() -> None:
+    """Raised mid-verts on Z rails land on the chord at curve factor 1, order 1."""
+    mesh = bpy.data.meshes.new("slide_curve_probe")
+    obj = bpy.data.objects.new("slide_curve_probe", mesh)
+    bpy.context.collection.objects.link(obj)
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    builder = bmesh.new()
+    selected_coords = ((0.0, 0.0, 0.0), (1.0, 0.0, 1.0), (2.0, 0.0, 1.0), (3.0, 0.0, 0.0))
+    selected_verts = [builder.verts.new(coord) for coord in selected_coords]
+    for index in range(3):
+        builder.edges.new((selected_verts[index], selected_verts[index + 1]))
+    for vert in selected_verts:
+        far = builder.verts.new((vert.co.x, 0.0, -1.0))
+        builder.edges.new((vert, far))
+    builder.to_mesh(mesh)
+    builder.free()
+
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.context.tool_settings.mesh_select_mode = (True, False, False)
+    bpy.context.tool_settings.transform_pivot_point = "MEDIAN_POINT"
+    edit_mesh = bmesh.from_edit_mesh(mesh)
+    edit_mesh.select_mode = {"VERT"}
+    edit_mesh.verts.ensure_lookup_table()
+    for vert in edit_mesh.verts:
+        vert.select = abs(vert.co.y) < 1e-8 and vert.co.z >= -1e-8
+    bmesh.update_edit_mesh(mesh)
+
+    bpy.ops.mesh.slide_tools(mode="CURVE", factor=1.0, curve_order=1, extend_rails=True)
+    edit_mesh = bmesh.from_edit_mesh(mesh)
+    edit_mesh.verts.ensure_lookup_table()
+    selected = [vert for vert in edit_mesh.verts if vert.select]
+    zs = {round(float(vert.co.x), 3): float(vert.co.z) for vert in selected}
+    assert abs(zs[0.0]) < 1e-5
+    assert abs(zs[3.0]) < 1e-5
+    assert zs[1.0] < 0.2
+    assert zs[2.0] < 0.2
+    bpy.ops.object.mode_set(mode="OBJECT")
+
+
 def _build_loop_with_rails() -> bpy.types.Object:
     mesh = bpy.data.meshes.new("slide_tools_probe")
     obj = bpy.data.objects.new("slide_tools_probe", mesh)
@@ -256,6 +296,9 @@ def main() -> None:
         assert not MESH_OT_slide_tools.poll(bpy.context)
 
         _assert_flatten_along_normal_rails()
+        assert not MESH_OT_slide_tools.poll(bpy.context)
+
+        _assert_curve_order_one_straightens_path()
         assert not MESH_OT_slide_tools.poll(bpy.context)
 
         extension.unregister()

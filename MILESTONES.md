@@ -2,7 +2,7 @@
 
 Session tracker for Slide Tools. Read **Current**, then [AGENTS.md](AGENTS.md).
 
-**Current:** done (M0–M5). Treat new work as Unreleased bugfixes unless a milestone is opened.
+**Current:** M6 Curve done. Treat new work as Unreleased bugfixes unless a milestone is opened.
 
 ## Protocol
 
@@ -68,6 +68,17 @@ Status: **done**
 - [x] pytest: in-face neighbors lose, borrowed through-rail wins, strong 1-ring rails stay, interior theta slide, axis-dependent borrow
 - [x] Blender smoke: subdivided face interiors move on through-rails
 - [x] CHANGELOG / README
+
+## M6 — Slide Curve
+
+Status: **done**
+
+- [x] Walk selected-selected edges into open paths and closed loops
+- [x] Open: pinned polynomial; closed: Fourier harmonics; Order 1–8
+- [x] Factor modal like Flatten; `[` `]` / mouse wheel cycles Order; lock fits in a plane
+- [x] Overlay draws the fitted curve; rails score toward each sample
+- [x] pytest for walking, fits, rail solve, status; Blender execute smoke
+- [x] Pie south slot, menus, sidebar, docs
 
 ## Deviations from the original spec
 

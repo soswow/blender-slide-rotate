@@ -24,6 +24,8 @@ class VIEW3D_PT_slide_tools(bpy.types.Panel):
         scale.mode = "SCALE"
         flatten = column.operator("mesh.slide_tools", text="Slide Flatten", icon="MESH_PLANE")
         flatten.mode = "FLATTEN"
+        curve = column.operator("mesh.slide_tools", text="Slide Curve", icon="CURVE_NCURVE")
+        curve.mode = "CURVE"
         from .. import is_dev_install
 
         if is_dev_install():

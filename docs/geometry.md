@@ -9,8 +9,9 @@ One value drives every vertex:
 - Rotate: angle `theta`
 - Scale: `factor`
 - Flatten: `factor` (`0` = start pose, `1` = on the plane)
+- Curve: `factor` (`0` = start pose, `1` = on the fitted curve)
 
-Each vertex is assigned a rail **once at invoke, and again if you lock X/Y/Z**. Rails are outgoing edges to unselected vertices, scored against the rotational tangent, the scale radial, or the flatten-plane normal. Opposite colinear neighbors are merged into one bidirectional rail so Clamp works in both directions, like a mid-loop slide.
+Each vertex is assigned a rail **once at invoke, and again if you lock X/Y/Z** (or change Curve order). Rails are outgoing edges to unselected vertices, scored against the rotational tangent, the scale radial, the flatten-plane normal, or the vector toward that vertex's curve sample. Opposite colinear neighbors are merged into one bidirectional rail so Clamp works in both directions, like a mid-loop slide.
 
 ## Interior vertices
 
@@ -26,4 +27,6 @@ If a vertex still has an outgoing edge to an unselected neighbor, that edge is t
 
 **Flatten** intersects each rail with the plane that interpolates that vertex's signed distance (factor 1 lands on the plane). Unconstrained Flatten uses the selection's best-fit plane; X/Y/Z lock uses that axis through the transform pivot.
 
-Vertices with no rail, or the active pivot vertex itself (Rotate/Scale only), stay still. Flatten still moves a vertex that sits on the pivot, as long as it has a rail.
+**Curve** walks selected-selected edges into open paths and closed loops. Open paths get a polynomial that is pinned at the ends. Closed loops get a trigonometric polynomial (Fourier harmonics). Order is how much shape that imaginary line may keep. Each vertex lerps toward the point on its rail that comes closest to the fitted curve (not the same-parameter sample on that curve — those often sit off the rail, so verts would barely move). The blue overlay is still the unconstrained imaginary line. X/Y/Z lock fits the curve in that plane through the pivot. Invoke is factor 0.
+
+Vertices with no rail, or the active pivot vertex itself (Rotate/Scale only), stay still. Flatten and Curve still move a vertex that sits on the pivot, as long as it has a rail.

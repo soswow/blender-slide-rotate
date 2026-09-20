@@ -6,6 +6,8 @@ from core.input import (
     PrecisionAccumulator,
     accumulate_precision,
     apply_precision,
+    factor_from_scale_ratio,
+    clamp_curve_factor,
     modal_status_hints,
     mouse_delta_fallback,
     mouse_delta_scale_fallback,
@@ -18,7 +20,7 @@ from core.input import (
     snap_angle,
     wrap_angle_delta,
 )
-from core.types import MODE_FLATTEN, MODE_SCALE
+from core.types import MODE_CURVE, MODE_FLATTEN, MODE_SCALE
 
 
 def test_wrap_angle_delta_crosses_pi() -> None:
@@ -153,12 +155,29 @@ def test_modal_status_hints_match_operator_keys() -> None:
     assert extend[1][0] == ("MOUSE_RMB", "EVENT_ESC")
     assert extend[4][0] == ("EVENT_C",)
     assert extend[5][0] == ("EVENT_X",)
+    curve_hints = modal_status_hints(True, MODE_CURVE)
+    assert curve_hints[-1] == (("EVENT_LEFTBRACKET", "EVENT_RIGHTBRACKET"), "Order")
 
 
 def test_screen_scale_factor_ratio_and_mirror() -> None:
     assert screen_scale_factor(20.0, 0.0, 0.0, 0.0, 10.0, 0.0) == 2.0
     assert screen_scale_factor(-10.0, 0.0, 0.0, 0.0, 10.0, 0.0) == -1.0
     assert screen_scale_factor(0.5, 0.0, 0.0, 0.0, 1.0, 0.0) is None
+
+
+def test_clamp_curve_factor_stays_in_unit_interval() -> None:
+    assert clamp_curve_factor(-0.5) == 0.0
+    assert clamp_curve_factor(0.25) == 0.25
+    assert clamp_curve_factor(1.0) == 1.0
+    assert clamp_curve_factor(2.0) == 1.0
+
+
+def test_factor_from_scale_ratio_identities() -> None:
+    assert factor_from_scale_ratio(1.0, 1.0) == 1.0
+    assert factor_from_scale_ratio(2.0, 1.0) == 2.0
+    assert factor_from_scale_ratio(1.0, 0.0) == 0.0
+    assert factor_from_scale_ratio(2.0, 0.0) == 1.0
+    assert abs(factor_from_scale_ratio(0.0, 0.0) + 1.0) < 1e-12
 
 
 def test_mouse_delta_scale_fallback() -> None:
@@ -220,3 +239,32 @@ def test_status_text_flatten_mode() -> None:
         factor=0.0,
     )
     assert typed == "Slide Flatten | Flatten: 0.5 | Axis: Global Z | Clamped | C: Extend"
+
+
+def test_status_text_curve_mode() -> None:
+    from core.input import format_status_text
+
+    text = format_status_text(
+        0.0,
+        "Unconstrained",
+        True,
+        0,
+        NumericInput(),
+        mode=MODE_CURVE,
+        factor=1.0,
+        curve_order=3,
+    )
+    assert text == (
+        "Slide Curve | Curve: 1.000 | Order: 3 | Axis: Unconstrained | Extend Rails | C: Clamp"
+    )
+    typed = format_status_text(
+        0.0,
+        "Global Z",
+        False,
+        0,
+        NumericInput(active=True, text="0.5"),
+        mode=MODE_CURVE,
+        factor=0.0,
+        curve_order=1,
+    )
+    assert typed == "Slide Curve | Curve: 0.5 | Order: 1 | Axis: Global Z | Clamped | C: Extend"

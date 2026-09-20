@@ -9,6 +9,7 @@ from .vec import Vec3
 MODE_ROTATE = "ROTATE"
 MODE_SCALE = "SCALE"
 MODE_FLATTEN = "FLATTEN"
+MODE_CURVE = "CURVE"
 
 
 @dataclass(frozen=True)

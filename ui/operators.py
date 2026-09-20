@@ -16,12 +16,30 @@ from ..core.axis import (
     press_axis_key,
     view_toward_camera,
 )
-from ..core.geometry import apply_vertex_slide, best_fit_plane, build_vertex_state, transformed_world
+from ..core.curve import (
+    DEFAULT_CURVE_ORDER,
+    MAX_CURVE_ORDER,
+    closest_point_on_polyline,
+    curve_score_direction,
+    sample_curve_polyline,
+    selection_max_curve_order,
+    step_curve_order,
+    walk_selected_chains,
+)
+from ..core.geometry import (
+    apply_vertex_slide,
+    best_fit_plane,
+    build_vertex_state,
+    closest_point_on_rail_to_polyline,
+    transformed_world,
+)
 from ..core.input import (
     DEFAULT_PRECISION_SNAP_SCALE,
     DEFAULT_SNAP_SCALE,
     PrecisionAccumulator,
     accumulate_precision,
+    clamp_curve_factor,
+    factor_from_scale_ratio,
     format_status_text,
     modal_status_hints,
     mouse_delta_fallback,
@@ -36,12 +54,21 @@ from ..core.input import (
     wrap_angle_delta,
 )
 from ..core.transforms import choose_pivot, local_from_world, world_from_local
-from ..core.types import MODE_FLATTEN, MODE_ROTATE, MODE_SCALE, AxisLockState, NumericInput, VertexRailState
+from ..core.types import (
+    MODE_CURVE,
+    MODE_FLATTEN,
+    MODE_ROTATE,
+    MODE_SCALE,
+    AxisLockState,
+    NumericInput,
+    VertexRailState,
+)
 from ..core.vec import Mat3, Mat4, Vec3, identity_mat3, invert_affine_mat4, normalize
 from . import overlay
 
 # Faces whose normals align this closely are one island for borrowed rails.
 _COPLANAR_DOT = 0.999
+_FACTOR_MODES = {MODE_SCALE, MODE_FLATTEN, MODE_CURVE}
 
 
 def _vec(values) -> Vec3:
@@ -179,13 +206,13 @@ def _orientation_matrix(context: bpy.types.Context, bm: bmesh.types.BMesh, matri
 
 
 class MESH_OT_slide_tools(bpy.types.Operator):
-    """Rotate, scale, or flatten the selection while vertices slide on connected rails."""
+    """Rotate, scale, flatten, or curve the selection while vertices slide on connected rails."""
 
     bl_idname = "mesh.slide_tools"
     bl_label = "Slide"
     bl_options = {"REGISTER", "UNDO", "GRAB_CURSOR", "BLOCKING"}
     bl_description = (
-        "Rotate, scale, or flatten selected vertices while each vertex slides "
+        "Rotate, scale, flatten, or curve selected vertices while each vertex slides "
         "along an automatically chosen connected edge"
     )
 
@@ -195,6 +222,7 @@ class MESH_OT_slide_tools(bpy.types.Operator):
             (MODE_ROTATE, "Rotate", "Rotate around the pivot like native R"),
             (MODE_SCALE, "Scale", "Scale from the pivot like native S"),
             (MODE_FLATTEN, "Flatten", "Flatten onto a plane like Loop Tools, along rails"),
+            (MODE_CURVE, "Curve", "Slide toward a fitted loop or path, along rails"),
         ),
         default=MODE_ROTATE,
     )
@@ -206,7 +234,7 @@ class MESH_OT_slide_tools(bpy.types.Operator):
     )
     factor: FloatProperty(
         name="Scale",
-        description="Shared scale or flatten factor",
+        description="Shared scale, flatten, or curve factor",
         default=1.0,
     )
     extend_rails: BoolProperty(
@@ -231,6 +259,13 @@ class MESH_OT_slide_tools(bpy.types.Operator):
         min=0,
         max=2,
     )
+    curve_order: IntProperty(
+        name="Order",
+        description="How much shape the fitted curve may keep (1 = line or oval)",
+        default=DEFAULT_CURVE_ORDER,
+        min=1,
+        max=MAX_CURVE_ORDER,
+    )
 
     def draw(self, _context: bpy.types.Context) -> None:
         layout = self.layout
@@ -239,6 +274,9 @@ class MESH_OT_slide_tools(bpy.types.Operator):
             layout.prop(self, "factor")
         elif self.mode == MODE_FLATTEN:
             layout.prop(self, "factor", text="Flatten")
+        elif self.mode == MODE_CURVE:
+            layout.prop(self, "factor", text="Curve")
+            layout.prop(self, "curve_order")
         else:
             layout.prop(self, "angle")
         layout.prop(self, "extend_rails")
@@ -257,7 +295,7 @@ class MESH_OT_slide_tools(bpy.types.Operator):
         self.lock_letter = "NONE"
         self.lock_stage = 0
         self.angle = 0.0
-        self.factor = 1.0
+        self.factor = 0.0 if self.mode == MODE_CURVE else 1.0
         if not self._prepare(context):
             return {"CANCELLED"}
         self._numeric = NumericInput()
@@ -286,8 +324,8 @@ class MESH_OT_slide_tools(bpy.types.Operator):
         overlay.ensure_draw_handler()
         context.window.cursor_modal_set("SCROLL_XY")
         context.window_manager.modal_handler_add(self)
-        # Flatten identity is factor 1 (on the plane); apply once so invoke
-        # matches Loop Tools instead of waiting for the first mouse move.
+        # Flatten identity is factor 1 (on the plane). Curve identity is 0
+        # (start pose); drag away from the pivot toward 1 to approach the curve.
         self._apply(context)
         self._set_status_bar(context)
         self._update_header(context)
@@ -304,6 +342,27 @@ class MESH_OT_slide_tools(bpy.types.Operator):
             self._sync_overlay()
             self._apply(context)
             self._update_header(context)
+            return {"RUNNING_MODAL"}
+        if (
+            self.mode == MODE_CURVE
+            and event.value == "PRESS"
+            and not event.ctrl
+            and not event.alt
+            and not event.oskey
+            and event.type
+            in {"LEFT_BRACKET", "RIGHT_BRACKET", "WHEELUPMOUSE", "WHEELDOWNMOUSE"}
+        ):
+            delta = 1 if event.type in {"RIGHT_BRACKET", "WHEELUPMOUSE"} else -1
+            maximum = getattr(self, "_curve_order_max", MAX_CURVE_ORDER)
+            nxt = step_curve_order(int(self.curve_order), delta, maximum)
+            if nxt != int(self.curve_order):
+                self.curve_order = nxt
+                self._restore(context)
+                if not self._prepare(context):
+                    return self._cancel(context)
+                self._sync_overlay()
+                self._apply(context)
+                self._update_header(context)
             return {"RUNNING_MODAL"}
         if event.type in {"X", "Y", "Z"} and event.value == "PRESS" and not event.ctrl and not event.oskey:
             state = press_axis_key(self._axis_state, event.type)
@@ -362,6 +421,7 @@ class MESH_OT_slide_tools(bpy.types.Operator):
         mesh = obj.data
         bm = bmesh.from_edit_mesh(mesh)
         bm.verts.ensure_lookup_table()
+        bm.edges.ensure_lookup_table()
         selected = [vert for vert in bm.verts if vert.select]
         if not selected:
             self.report({"ERROR"}, "No vertices selected")
@@ -394,6 +454,9 @@ class MESH_OT_slide_tools(bpy.types.Operator):
             return False
         self._pivot = pivot
         rail_axis = axis
+        self._curve_targets = {}
+        self._curve_polylines = []
+        self._curve_order_max = 1
         if self.mode == MODE_FLATTEN:
             if self._axis_locked():
                 self._plane_origin = pivot
@@ -409,8 +472,52 @@ class MESH_OT_slide_tools(bpy.types.Operator):
         else:
             self._plane_origin = pivot
             self._plane_normal = axis
-        states: list[VertexRailState] = []
         selected_ids = {vert.index for vert in selected}
+        curve_plane_origin = None
+        curve_plane_normal = None
+        if self.mode == MODE_CURVE:
+            loop_edges = [
+                (edge.verts[0].index, edge.verts[1].index)
+                for edge in bm.edges
+                if edge.verts[0].index in selected_ids and edge.verts[1].index in selected_ids
+            ]
+            chains = walk_selected_chains([vert.index for vert in selected], loop_edges)
+            if not chains:
+                self.report({"ERROR"}, "Slide Curve needs a selected loop or path")
+                return False
+            worlds_by_index = {
+                vert.index: world_from_local(_vec(vert.co), self._matrix_world) for vert in selected
+            }
+            if self._axis_locked():
+                curve_plane_origin = pivot
+                curve_plane_normal = axis
+            self._curve_order_max = selection_max_curve_order(chains)
+            self.curve_order = min(max(1, int(self.curve_order)), self._curve_order_max)
+            self._curve_polylines = [
+                sample_curve_polyline(
+                    chain,
+                    worlds_by_index,
+                    int(self.curve_order),
+                    curve_plane_origin,
+                    curve_plane_normal,
+                    samples=64,
+                )
+                for chain in chains
+            ]
+            polyline_by_index: dict[int, list] = {}
+            for chain, polyline in zip(chains, self._curve_polylines):
+                for index in chain.indices:
+                    polyline_by_index[index] = polyline
+            self._curve_targets = {}
+            for vert in selected:
+                polyline = polyline_by_index.get(vert.index)
+                if not polyline:
+                    continue
+                world = world_from_local(_vec(vert.co), self._matrix_world)
+                self._curve_targets[vert.index] = closest_point_on_polyline(world, polyline)
+            if curve_plane_normal is not None:
+                rail_axis = curve_plane_normal
+        states: list[VertexRailState] = []
         for vert in selected:
             neighbors: list[Vec3] = []
             for edge in vert.link_edges:
@@ -421,6 +528,21 @@ class MESH_OT_slide_tools(bpy.types.Operator):
             local = _vec(vert.co)
             world = world_from_local(local, self._matrix_world)
             borrowed = _borrowed_rail_worlds(vert, selected_ids, self._matrix_world)
+            target = self._curve_targets.get(vert.index) if self.mode == MODE_CURVE else None
+            if self.mode == MODE_CURVE and target is None:
+                states.append(
+                    VertexRailState(
+                        index=vert.index,
+                        original_world=world,
+                        original_local=local,
+                        rail=None,
+                        movable=False,
+                    )
+                )
+                continue
+            guide = None
+            if target is not None:
+                guide = curve_score_direction(world, target, rail_axis)
             states.append(
                 build_vertex_state(
                     vert.index,
@@ -432,8 +554,17 @@ class MESH_OT_slide_tools(bpy.types.Operator):
                     borrowed,
                     mode=self.mode,
                     axis_locked=self._axis_locked(),
+                    guide_override=guide,
                 )
             )
+            if self.mode == MODE_CURVE:
+                polyline = polyline_by_index.get(vert.index)
+                rail = states[-1].rail
+                if rail is not None and polyline:
+                    self._curve_targets[vert.index] = closest_point_on_rail_to_polyline(
+                        rail,
+                        polyline,
+                    )
         self._states = states
         self._frozen_count = sum(0 if state.movable else 1 for state in states)
         self._numeric = getattr(self, "_numeric", NumericInput())
@@ -443,23 +574,27 @@ class MESH_OT_slide_tools(bpy.types.Operator):
         return self._axis_state.stage != 0 and self._axis_state.letter is not None
 
     def _slide_value(self) -> float:
-        if self.mode in {MODE_SCALE, MODE_FLATTEN}:
+        if self.mode == MODE_CURVE:
+            return clamp_curve_factor(self.factor)
+        if self.mode in _FACTOR_MODES:
             return float(self.factor)
         return float(self.angle)
 
     def _set_value(self, value: float) -> None:
-        if self.mode in {MODE_SCALE, MODE_FLATTEN}:
+        if self.mode == MODE_CURVE:
+            self.factor = clamp_curve_factor(value)
+        elif self.mode in _FACTOR_MODES:
             self.factor = value
         else:
             self.angle = value
 
     def _typed_value(self) -> float | None:
-        if self.mode in {MODE_SCALE, MODE_FLATTEN}:
+        if self.mode in _FACTOR_MODES:
             return numeric_value_number(self._numeric)
         return numeric_value_radians(self._numeric)
 
     def _set_value_from_mouse(self, context: bpy.types.Context, event: bpy.types.Event) -> None:
-        if self.mode in {MODE_SCALE, MODE_FLATTEN}:
+        if self.mode in _FACTOR_MODES:
             self.factor = self._factor_from_mouse(context, event)
         else:
             self.angle = self._theta_from_mouse(context, event)
@@ -467,6 +602,8 @@ class MESH_OT_slide_tools(bpy.types.Operator):
     def _axis_status_label(self) -> str:
         if self.mode == MODE_FLATTEN and not self._axis_locked():
             return "Best Fit"
+        if self.mode == MODE_CURVE and not self._axis_locked():
+            return "Unconstrained"
         return lock_label(self._axis_state, self._orientation_name)
 
     def _current_axis(self) -> Vec3:
@@ -555,9 +692,12 @@ class MESH_OT_slide_tools(bpy.types.Operator):
             else:
                 raw = current
         self._precision, delta = accumulate_precision(self._precision, raw - 1.0, precision)
-        factor = 1.0 + delta
+        identity = 0.0 if self.mode == MODE_CURVE else 1.0
+        factor = factor_from_scale_ratio(1.0 + delta, identity)
         if increment is not None:
             factor = snap_angle(factor, increment)
+        if self.mode == MODE_CURVE:
+            factor = clamp_curve_factor(factor)
         return factor
 
     def _apply(self, context: bpy.types.Context) -> None:
@@ -572,6 +712,7 @@ class MESH_OT_slide_tools(bpy.types.Operator):
             plane_origin = self._pivot
         value = self._slide_value()
         axis_locked = self._axis_locked()
+        targets = getattr(self, "_curve_targets", {})
         for state in self._states:
             apply_vertex_slide(
                 state,
@@ -582,6 +723,7 @@ class MESH_OT_slide_tools(bpy.types.Operator):
                 self.mode,
                 axis_locked,
                 plane_origin,
+                targets.get(state.index),
             )
             vert = bm.verts[state.index]
             local = local_from_world(
@@ -617,6 +759,7 @@ class MESH_OT_slide_tools(bpy.types.Operator):
                 self._numeric,
                 mode=self.mode,
                 factor=float(self.factor),
+                curve_order=int(self.curve_order),
             )
         )
         self._redraw_statusbar(context)
@@ -629,7 +772,7 @@ class MESH_OT_slide_tools(bpy.types.Operator):
 
         def _draw_status(header, _context: bpy.types.Context) -> None:
             layout = header.layout
-            for icons, label in modal_status_hints(bool(operator.extend_rails)):
+            for icons, label in modal_status_hints(bool(operator.extend_rails), operator.mode):
                 row = layout.row(align=True)
                 for icon in icons:
                     row.label(text="", icon=icon)
@@ -652,6 +795,7 @@ class MESH_OT_slide_tools(bpy.types.Operator):
 
     def _sync_overlay(self) -> None:
         overlay.set_rails(self._states, bool(self.extend_rails))
+        overlay.set_curve_polylines(getattr(self, "_curve_polylines", []))
         overlay.set_lock_axis(
             self._pivot,
             self._current_axis(),
@@ -683,7 +827,7 @@ class MESH_OT_slide_tools(bpy.types.Operator):
 
 
 class VIEW3D_MT_slide_pie(bpy.types.Menu):
-    """Shift+Alt+R pie: pick Rotate, Scale, or Flatten, then the Slide modal starts."""
+    """Shift+Alt+R pie: pick Rotate, Scale, Curve, or Flatten, then the Slide modal starts."""
 
     bl_label = "Slide"
     bl_idname = "VIEW3D_MT_slide_pie"
@@ -691,11 +835,11 @@ class VIEW3D_MT_slide_pie(bpy.types.Menu):
     def draw(self, _context: bpy.types.Context) -> None:
         pie = self.layout.menu_pie()
         pie.operator_context = "INVOKE_REGION_WIN"
-        # Slot order: W, E, S, N. Labels start with R / S / F so pie
-        # accelerators match native transform letters plus Flatten.
+        # Slot order: W, E, S, N. Labels start with R / S / C / F so pie
+        # accelerators match native transform letters plus Curve and Flatten.
         _add_slide_operator(pie, MODE_ROTATE, "Rotate")
         _add_slide_operator(pie, MODE_SCALE, "Scale")
-        pie.separator()
+        _add_slide_operator(pie, MODE_CURVE, "Curve")
         _add_slide_operator(pie, MODE_FLATTEN, "Flatten")
 
 
@@ -739,6 +883,7 @@ def _draw_mesh_menu(self, _context: bpy.types.Context) -> None:
     _add_slide_operator(column, MODE_ROTATE, "Slide Rotate")
     _add_slide_operator(column, MODE_SCALE, "Slide Scale")
     _add_slide_operator(column, MODE_FLATTEN, "Slide Flatten")
+    _add_slide_operator(column, MODE_CURVE, "Slide Curve")
 
 
 def _draw_transform_menu(self, context: bpy.types.Context) -> None:

@@ -18,13 +18,25 @@ _extend_rails = True
 _lock_pivot: Vec3 | None = None
 _lock_axis: Vec3 | None = None
 _lock_letter: str | None = None
+_curve_coords: list[tuple[float, float, float]] = []
 _RAIL_COLOR = (0.95, 0.75, 0.15, 0.9)
+_CURVE_COLOR = (0.45, 0.82, 1.0, 0.95)
 
 
 def set_rails(states: list[VertexRailState], extend_rails: bool) -> None:
     global _states, _extend_rails
     _states = states
     _extend_rails = extend_rails
+
+
+def set_curve_polylines(polylines: list[list[Vec3]]) -> None:
+    global _curve_coords
+    coords: list[tuple[float, float, float]] = []
+    for polyline in polylines:
+        for index in range(len(polyline) - 1):
+            coords.append(polyline[index])
+            coords.append(polyline[index + 1])
+    _curve_coords = coords
 
 
 def set_lock_axis(pivot: Vec3 | None, axis: Vec3 | None, letter: str | None) -> None:
@@ -35,11 +47,12 @@ def set_lock_axis(pivot: Vec3 | None, axis: Vec3 | None, letter: str | None) -> 
 
 
 def clear_rails() -> None:
-    global _states, _lock_pivot, _lock_axis, _lock_letter
+    global _states, _lock_pivot, _lock_axis, _lock_letter, _curve_coords
     _states = []
     _lock_pivot = None
     _lock_axis = None
     _lock_letter = None
+    _curve_coords = []
 
 
 def _draw_lines(coords: list[tuple[float, float, float]], color: tuple[float, float, float, float], width: float) -> None:
@@ -104,6 +117,10 @@ def _draw() -> None:
         coords.append(end)
     if coords:
         _draw_lines(coords, _RAIL_COLOR, 1.5)
+    if _curve_coords:
+        gpu.state.depth_test_set("NONE")
+        _draw_polyline(_curve_coords, _CURVE_COLOR, max(2.0, _axis_line_width() * 0.6))
+        gpu.state.depth_test_set("LESS_EQUAL")
 
     if _lock_letter is None or _lock_pivot is None or _lock_axis is None:
         return

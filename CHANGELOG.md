@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Slide Curve: slide a selected loop or path toward a fitted curve (open: pinned polynomial; closed: Fourier harmonics) while vertices stay on rails. `[` `]` or mouse wheel changes Order; X/Y/Z fits in that plane.
+
+### Changed
+- Slide Curve starts at factor 0 (the current pose). Drag away from the pivot, or type a value, toward 1 to approach the fitted curve. Factor is clamped to 0–1.
+
+### Fixed
+- The Slide Tools sidebar no longer errors when drawing the Curve button.
+- Slide Curve no longer slams vertices to the far ends of their rails at tiny factors.
+- Slide Curve factor 1 now slides each vertex to the closest point on its rail to the fitted curve, so verts use the rail travel the overlay allows.
+
 ## [0.2.0] - 2026-09-20
 
 ### Added
