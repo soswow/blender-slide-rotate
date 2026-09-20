@@ -4,7 +4,7 @@ Conventions for humans and coding agents working in this repo. Fresh sessions sh
 
 M0–M4 are done. New work is Unreleased bugfixes/polish unless a milestone is opened.
 
-`initial-ai-generated-requirements.md` is a historical first-pass spec, not current behavior. Prefer README, this file, and `core/`.
+`initial-ai-generated-requirements.md` is a historical first-pass spec, not current behavior. Prefer README, `docs/`, this file, and `core/`.
 
 ## Changelog
 

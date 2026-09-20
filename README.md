@@ -1,48 +1,39 @@
 # Slide Tools
 
-Blender 5.1 Edit Mode operator: rotate, scale, or flatten a vertex/edge/face selection while each vertex stays on a connected **guide rail**.
+Blender 5.1 Edit Mode: rotate, scale, or flatten a selection while each vertex stays on a connected **guide rail**.
 
-It should feel like native `R` / `S`, or Loop Tools Flatten, except vertices can only travel along automatically chosen surrounding edges (like a rotation-, scale-, or flatten-driven edge slide).
+It should feel like native `R` / `S`, or Loop Tools Flatten, except vertices can only travel along automatically chosen surrounding edges.
 
-[Watch a walkthrough on YouTube](https://youtu.be/qDgqyUuwZWk)
+**Rotate**
 
-[![Slide Tools walkthrough on YouTube](docs/slide-tools-demo.gif)](https://youtu.be/qDgqyUuwZWk)
+![Slide Rotate](docs/slide-rotate.gif)
 
-## Requirements
+**Scale**
 
-- Blender 5.1 or newer
+![Slide Scale](docs/slide-scale.gif)
 
-## Installation
+**Flatten**
 
-Download the zip from [GitHub Releases](https://github.com/soswow/blender-slide-tools/releases), or use this checkout.
+![Slide Flatten](docs/slide-flatten.gif)
 
-**From Disk:** Blender **Edit → Preferences → Get Extensions → Install from Disk**, then enable **Slide Tools**.
+## Install
 
-**Development (no zip):**
+Blender 5.1 or newer. Download the zip from [GitHub Releases](https://github.com/soswow/blender-slide-tools/releases).
 
-```sh
-./scripts/link-dev.sh
-```
+**Edit → Preferences → Get Extensions → Install from Disk**, then enable **Slide Tools**.
 
-That symlinks this repo to `~/Library/Application Support/Blender/5.1/extensions/user_default/slide_tools`. Enable **Slide Tools** once. After edits, click **Reload Slide Tools** at the bottom of the 3D View **Slide Tools** sidebar (or F3). Watch the system console for `Slide Tools: reloaded from disk`. Restart Blender after RNA property schema changes.
+## Use
 
-## Invoke
+1. Edit Mode: select a loop, vertices, or edges.
+2. Set the transform pivot (Median, 3D Cursor, Active Element, or Bounding Box Center).
+3. **Shift+Alt+R** opens the Slide pie. Flick toward Rotate, Scale, or Flatten (top), click, or tap **R** / **S** / **F**.
+4. Left-click or Enter confirms. Right-click or Esc cancels.
 
-- Shortcut: **Shift+Alt+R** in Mesh Edit Mode opens the Slide pie. Flick toward Rotate, Scale, or Flatten (top), click, or tap **R** / **S** / **F**.
-- Menu: **Mesh → Transform → Slide Rotate** / **Slide Scale** / **Slide Flatten**, also **Vertex** / **Edge**
-- Search: **F3 → Slide**
-- Sidebar: **3D View → Slide Tools → Slide Rotate** / **Slide Scale** / **Slide Flatten**
+Also: **Mesh → Transform** (and Vertex / Edge menus), **F3 → Slide**, or the **Slide Tools** sidebar.
 
 Native `R` and `S` are unchanged. Shift+Alt+S remains To Sphere.
 
-## Usage
-
-1. Enter Edit Mode and select a loop, vertices, or edges.
-2. Set the transform pivot (Median, 3D Cursor, Active Element, or Bounding Box Center).
-3. Start Slide Rotate, Slide Scale, or Slide Flatten. Rotate and Scale follow the mouse like `R` / `S`. Flatten lands on the plane at invoke (factor 1); drag toward the pivot to ease off.
-4. Left-click or Enter confirms. Right-click or Esc cancels.
-
-While dragging:
+Rotate and Scale follow the mouse like `R` / `S`. Flatten lands on the plane at invoke (factor 1); drag toward the pivot to ease off.
 
 | Key | Action |
 | --- | --- |
@@ -50,21 +41,11 @@ While dragging:
 | Shift | Precision (further motion only; does not jump back to the start pose) |
 | Ctrl | Snap (rotate: scene 3D angle increment; scale: 0.1, or 0.01 with Shift) |
 | C | Toggle Clamp / Extend Rails (extend is the default) |
-| X / Y / Z | Axis lock like native `R` / `S` (orientation → Global/Local flip → View). Rails are re-chosen for the new axis. |
-| 0–9, `.`, `-` | Type an angle in degrees (Rotate), a scale factor (Scale), or a flatten factor (Flatten; `1` is fully on the plane) |
+| X / Y / Z | Axis lock like native `R` / `S`. Rails are re-chosen for the new axis. |
+| 0–9, `.`, `-` | Type degrees (Rotate), a scale factor, or a flatten factor (`1` is fully on the plane) |
 | Backspace | Edit typed input |
 
-The 3D View header shows the angle, scale factor, or flatten factor, axis, and clamp state. The status bar lists the same kind of modal keys as native `R` (confirm, cancel, Shift precision, Ctrl snap, C clamp, X/Y/Z). Yellow overlay lines are the cached rails. Locking X, Y, or Z also draws a thick anti-aliased infinite axis through the pivot, using the same colors as native `R` (theme **Axis X/Y/Z**, mixed toward light gray).
-
-## Geometry
-
-One shared parameter drives every vertex: an angle `theta` for Rotate, a scale `factor` for Scale, a flatten `factor` for Flatten (0 = start pose, 1 = on the plane). Each vertex is assigned a rail **once at invoke, and again if you lock X/Y/Z** (outgoing edges to unselected vertices, scored against the rotational tangent, the scale radial, or the flatten-plane normal). Opposite colinear neighbors are merged into one bidirectional rail so Clamp works in both directions, like a mid-loop slide.
-
-Vertices sitting inside a subdivided face often have no 1-ring edge in the rotation direction. If every connected neighbor is a poor match for the rotational tangent, Slide Tools copies rails from the coplanar face island: edges that leave that surface (the through-edges the boundary already has). Those borrowed rails are scored the same way, so interior verts can slide with the face instead of crawling along in-face edges.
-
-The rotate solver intersects the rotated radial line with the rail in the current rotation plane (view axis by default), then applies that parameter on the real 3D rail. If the intersection is parallel, near the pivot, or numerically explosive, it falls back to projecting the unconstrained rotated point onto the rail. Scale projects the unconstrained native-S pose (uniform from the pivot) onto the rail. With X/Y/Z lock, it instead slides each vertex along its rail until the locked coordinate matches native S — so Y-lock at scale 0 lands every vertex on the pivot's Y, even if the rail is slightly tilted. Flatten intersects each rail with the plane that interpolates that vertex's signed distance (factor 1 lands on the plane). Unconstrained Flatten uses the selection's best-fit plane; X/Y/Z lock uses that axis through the transform pivot. Vertices with no rail, or the active pivot vertex itself (Rotate/Scale only), stay still. Flatten still moves a vertex that sits on the pivot, as long as it has a rail.
-
-Coordinates are solved in world space and written back to BMesh local space so rotated and non-uniformly scaled objects stay correct.
+Yellow overlay lines are the cached rails. X/Y/Z lock also draws a thick axis through the pivot, colored like native `R`.
 
 ## Limitations
 
@@ -74,40 +55,12 @@ Coordinates are solved in world space and written back to BMesh local space so r
 - Simple numeric input only (no units or expressions).
 - Custom transform orientations use the orientation matrix when Blender exposes it; Normal uses averaged selected vertex normals.
 
-## Development tests
+## More
 
-```sh
-./scripts/run-unittests.sh
-"/Applications/Blender 5.1.app/Contents/MacOS/blender" \
- --factory-startup -b --python scripts/validate_addon.py
-```
-
-See [AGENTS.md](AGENTS.md) for changelog and unit-test rules, and [MILESTONES.md](MILESTONES.md) for session progress.
-
-## Release
-
-On a clean `main`, with Unreleased changelog bullets and a GitHub `origin` remote:
-
-```sh
-./scripts/release.sh 0.1.0
-```
-
-That bumps `blender_manifest.toml` if needed, moves `## [Unreleased]` into a dated section, commits, tags `v0.1.0`, and pushes. The **Release** GitHub Action builds `slide_tools-0.1.0.zip` with Blender’s extension builder and publishes it on the [GitHub Release](https://github.com/soswow/blender-slide-tools/releases). Do not attach zips by hand unless Actions failed.
-
-## Manual checks
-
-- Grid: select a horizontal loop, Shift+Alt+R, pick Rotate (or tap R); vertices travel on vertical rails.
-- Scale: select verts with outgoing edges away from the pivot, Shift+Alt+R, tap S; they slide along those radials.
-- Flatten: select a wavy loop with outgoing edges, Shift+Alt+R, tap F; verts slide onto the best-fit plane. Drag toward the pivot to ease off. Press Z to flatten onto the pivot's XY plane instead.
-- Subdivided face: select the face including interior verts; they follow the same through-rails as the boundary instead of in-face edges.
-- Right/Front/Top ortho: free rotation is around the view axis (same as `R`).
-- Press `X` / `Y` / `Z` while dragging; header follows View → orientation → Global/Local, and a thick anti-aliased axis line in native-R colors appears through the pivot.
-- Axis lock still follows the mouse after orbiting 180° around the model (same as native `R`).
-- Active Element pivot: the active vertex stays put.
-- `C` clamps to the physical rail; default extend continues past the edge.
-- Object with rotation and non-uniform scale still follows world-space rails.
-- Esc restores the start pose; Undo after confirm is one step.
-- Reload from the sidebar after a Python edit (linked checkout only).
+- [How rails and solvers work](docs/geometry.md)
+- [Development](docs/development.md)
+- [Release](docs/release.md)
+- [Manual checks](docs/manual-checks.md)
 
 ## License
 
