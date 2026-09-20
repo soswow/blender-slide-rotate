@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-20
+
 ### Added
 - Shift+Alt+R opens a Slide pie (Rotate left, Scale right, Flatten top). Flick, click, or tap R / S / F.
 - Slide Scale: scale from the transform pivot while vertices stay on automatically chosen rails.
