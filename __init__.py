@@ -1,4 +1,4 @@
-"""Slide Rotate Blender extension entry point."""
+"""Slide Tools Blender extension entry point."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ else:
     operators = overlay = panel = None
 
 bl_info = {
-    "name": "Slide Rotate",
+    "name": "Slide Tools",
     "author": "Aleksandr 'Sasha' Motsjonov",
     "version": (0, 1, 0),
     "blender": (5, 1, 0),
@@ -95,7 +95,7 @@ def reload_addon() -> None:
     """Unregister, purge package modules, and register a fresh disk import."""
     package_name = __package__
     if not package_name:
-        raise RuntimeError("Slide Rotate reload requires a package context")
+        raise RuntimeError("Slide Tools reload requires a package context")
     package_path = Path(sys.modules[package_name].__file__).resolve().parent
     overlay.remove_draw_handler()
     unregister()
@@ -109,7 +109,7 @@ def reload_addon() -> None:
         submodule_search_locations=[str(package_path)],
     )
     if spec is None or spec.loader is None:
-        raise RuntimeError(f"Could not reload Slide Rotate from {package_path}")
+        raise RuntimeError(f"Could not reload Slide Tools from {package_path}")
     package = importlib.util.module_from_spec(spec)
     sys.modules[package_name] = package
     spec.loader.exec_module(package)
@@ -139,12 +139,12 @@ def schedule_reload() -> bool:
         try:
             package = sys.modules.get(package_name)
             if package is None:
-                print(f"Slide Rotate: reload skipped; missing {package_name}")
+                print(f"Slide Tools: reload skipped; missing {package_name}")
                 return None
             package.reload_addon()
-            print("Slide Rotate: reloaded from disk")
+            print("Slide Tools: reloaded from disk")
         except Exception:
-            print("Slide Rotate: reload failed")
+            print("Slide Tools: reload failed")
             traceback.print_exc()
         return None
 

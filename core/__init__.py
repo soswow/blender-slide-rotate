@@ -1,4 +1,4 @@
-"""Pure Slide Rotate math. Safe to import without bpy."""
+"""Pure Slide Tools math. Safe to import without bpy."""
 
 from .axis import (
     axis_overlay_color,

@@ -1,4 +1,4 @@
-"""Slide Rotate modal operator and development reload."""
+"""Slide Tools modal operator and development reload."""
 
 from __future__ import annotations
 
@@ -177,10 +177,10 @@ def _orientation_matrix(context: bpy.types.Context, bm: bmesh.types.BMesh, matri
     return kind, identity_mat3()
 
 
-class MESH_OT_slide_rotate(bpy.types.Operator):
+class MESH_OT_slide_tools(bpy.types.Operator):
     """Rotate, scale, or flatten the selection while vertices slide on connected rails."""
 
-    bl_idname = "mesh.slide_rotate"
+    bl_idname = "mesh.slide_tools"
     bl_label = "Slide"
     bl_options = {"REGISTER", "UNDO", "GRAB_CURSOR", "BLOCKING"}
     bl_description = (
@@ -698,11 +698,11 @@ class VIEW3D_MT_slide_pie(bpy.types.Menu):
         _add_slide_operator(pie, MODE_FLATTEN, "Flatten")
 
 
-class SR_OT_reload(bpy.types.Operator):
+class ST_OT_reload(bpy.types.Operator):
     """Dev helper: unregister, reload modules from disk, and register again."""
 
-    bl_idname = "slide_rotate.reload"
-    bl_label = "Reload Slide Rotate"
+    bl_idname = "slide_tools.reload"
+    bl_label = "Reload Slide Tools"
     bl_description = (
         "Reload this extension from disk after the current UI event finishes. "
         "Only available when the extension is a linked git checkout."
@@ -719,14 +719,14 @@ class SR_OT_reload(bpy.types.Operator):
         from .. import schedule_reload
 
         if not schedule_reload():
-            self.report({"WARNING"}, "Slide Rotate reload already queued")
+            self.report({"WARNING"}, "Slide Tools reload already queued")
             return {"CANCELLED"}
-        self.report({"INFO"}, "Slide Rotate reload queued")
+        self.report({"INFO"}, "Slide Tools reload queued")
         return {"FINISHED"}
 
 
 def _add_slide_operator(layout, mode: str, text: str):
-    operator = layout.operator(MESH_OT_slide_rotate.bl_idname, text=text)
+    operator = layout.operator(MESH_OT_slide_tools.bl_idname, text=text)
     operator.mode = mode
     return operator
 
@@ -748,9 +748,9 @@ def _draw_transform_menu(self, context: bpy.types.Context) -> None:
 
 
 CLASSES = (
-    MESH_OT_slide_rotate,
+    MESH_OT_slide_tools,
     VIEW3D_MT_slide_pie,
-    SR_OT_reload,
+    ST_OT_reload,
 )
 
 

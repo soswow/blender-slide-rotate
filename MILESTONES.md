@@ -1,6 +1,6 @@
 # Milestones
 
-Session tracker for Slide Rotate. Read **Current**, then [AGENTS.md](AGENTS.md).
+Session tracker for Slide Tools. Read **Current**, then [AGENTS.md](AGENTS.md).
 
 **Current:** done (M0–M5). Treat new work as Unreleased bugfixes unless a milestone is opened.
 

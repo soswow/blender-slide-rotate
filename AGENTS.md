@@ -20,7 +20,7 @@ Write one short user-facing line, not a commit subject. Describe the product beh
 ## [Unreleased]
 
 ### Added
-- Shift+Alt+R starts Slide Rotate in Mesh Edit Mode.
+- Shift+Alt+R starts Slide Tools in Mesh Edit Mode.
 ```
 
 If `[Unreleased]` has no matching subsection yet, add it. Leave dated `## [x.y.z]` sections untouched.

@@ -1,4 +1,4 @@
-# Slide Rotate
+# Slide Tools
 
 Blender 5.1 Edit Mode operator: rotate, scale, or flatten a vertex/edge/face selection while each vertex stays on a connected **guide rail**.
 
@@ -6,7 +6,7 @@ It should feel like native `R` / `S`, or Loop Tools Flatten, except vertices can
 
 [Watch a walkthrough on YouTube](https://youtu.be/qDgqyUuwZWk)
 
-[![Slide Rotate walkthrough on YouTube](docs/slide-rotate-demo.gif)](https://youtu.be/qDgqyUuwZWk)
+[![Slide Tools walkthrough on YouTube](docs/slide-tools-demo.gif)](https://youtu.be/qDgqyUuwZWk)
 
 ## Requirements
 
@@ -14,9 +14,9 @@ It should feel like native `R` / `S`, or Loop Tools Flatten, except vertices can
 
 ## Installation
 
-Download the zip from GitHub Releases (after a tagged ship), or use this checkout.
+Download the zip from [GitHub Releases](https://github.com/soswow/blender-slide-tools/releases), or use this checkout.
 
-**From Disk:** Blender **Edit → Preferences → Get Extensions → Install from Disk**, then enable **Slide Rotate**.
+**From Disk:** Blender **Edit → Preferences → Get Extensions → Install from Disk**, then enable **Slide Tools**.
 
 **Development (no zip):**
 
@@ -24,14 +24,14 @@ Download the zip from GitHub Releases (after a tagged ship), or use this checkou
 ./scripts/link-dev.sh
 ```
 
-That symlinks this repo to `~/Library/Application Support/Blender/5.1/extensions/user_default/slide_rotate`. Enable **Slide Rotate** once. After edits, click **Reload Slide Rotate** at the bottom of the 3D View **Slide Rotate** sidebar (or F3). Watch the system console for `Slide Rotate: reloaded from disk`. Restart Blender after RNA property schema changes.
+That symlinks this repo to `~/Library/Application Support/Blender/5.1/extensions/user_default/slide_tools`. Enable **Slide Tools** once. After edits, click **Reload Slide Tools** at the bottom of the 3D View **Slide Tools** sidebar (or F3). Watch the system console for `Slide Tools: reloaded from disk`. Restart Blender after RNA property schema changes.
 
 ## Invoke
 
 - Shortcut: **Shift+Alt+R** in Mesh Edit Mode opens the Slide pie. Flick toward Rotate, Scale, or Flatten (top), click, or tap **R** / **S** / **F**.
 - Menu: **Mesh → Transform → Slide Rotate** / **Slide Scale** / **Slide Flatten**, also **Vertex** / **Edge**
 - Search: **F3 → Slide**
-- Sidebar: **3D View → Slide Rotate → Slide Rotate** / **Slide Scale** / **Slide Flatten**
+- Sidebar: **3D View → Slide Tools → Slide Rotate** / **Slide Scale** / **Slide Flatten**
 
 Native `R` and `S` are unchanged. Shift+Alt+S remains To Sphere.
 
@@ -60,7 +60,7 @@ The 3D View header shows the angle, scale factor, or flatten factor, axis, and c
 
 One shared parameter drives every vertex: an angle `theta` for Rotate, a scale `factor` for Scale, a flatten `factor` for Flatten (0 = start pose, 1 = on the plane). Each vertex is assigned a rail **once at invoke, and again if you lock X/Y/Z** (outgoing edges to unselected vertices, scored against the rotational tangent, the scale radial, or the flatten-plane normal). Opposite colinear neighbors are merged into one bidirectional rail so Clamp works in both directions, like a mid-loop slide.
 
-Vertices sitting inside a subdivided face often have no 1-ring edge in the rotation direction. If every connected neighbor is a poor match for the rotational tangent, Slide Rotate copies rails from the coplanar face island: edges that leave that surface (the through-edges the boundary already has). Those borrowed rails are scored the same way, so interior verts can slide with the face instead of crawling along in-face edges.
+Vertices sitting inside a subdivided face often have no 1-ring edge in the rotation direction. If every connected neighbor is a poor match for the rotational tangent, Slide Tools copies rails from the coplanar face island: edges that leave that surface (the through-edges the boundary already has). Those borrowed rails are scored the same way, so interior verts can slide with the face instead of crawling along in-face edges.
 
 The rotate solver intersects the rotated radial line with the rail in the current rotation plane (view axis by default), then applies that parameter on the real 3D rail. If the intersection is parallel, near the pivot, or numerically explosive, it falls back to projecting the unconstrained rotated point onto the rail. Scale projects the unconstrained native-S pose (uniform from the pivot) onto the rail. With X/Y/Z lock, it instead slides each vertex along its rail until the locked coordinate matches native S — so Y-lock at scale 0 lands every vertex on the pivot's Y, even if the rail is slightly tilted. Flatten intersects each rail with the plane that interpolates that vertex's signed distance (factor 1 lands on the plane). Unconstrained Flatten uses the selection's best-fit plane; X/Y/Z lock uses that axis through the transform pivot. Vertices with no rail, or the active pivot vertex itself (Rotate/Scale only), stay still. Flatten still moves a vertex that sits on the pivot, as long as it has a rail.
 
@@ -79,7 +79,7 @@ Coordinates are solved in world space and written back to BMesh local space so r
 ```sh
 ./scripts/run-unittests.sh
 "/Applications/Blender 5.1.app/Contents/MacOS/blender" \
-  --factory-startup -b --python scripts/validate_addon.py
+ --factory-startup -b --python scripts/validate_addon.py
 ```
 
 See [AGENTS.md](AGENTS.md) for changelog and unit-test rules, and [MILESTONES.md](MILESTONES.md) for session progress.
@@ -92,7 +92,7 @@ On a clean `main`, with Unreleased changelog bullets and a GitHub `origin` remot
 ./scripts/release.sh 0.1.0
 ```
 
-That bumps `blender_manifest.toml` if needed, moves `## [Unreleased]` into a dated section, commits, tags `v0.1.0`, and pushes. The **Release** GitHub Action builds `slide_rotate-0.1.0.zip` with Blender’s extension builder and publishes it on the GitHub Release. Do not attach zips by hand unless Actions failed.
+That bumps `blender_manifest.toml` if needed, moves `## [Unreleased]` into a dated section, commits, tags `v0.1.0`, and pushes. The **Release** GitHub Action builds `slide_tools-0.1.0.zip` with Blender’s extension builder and publishes it on the [GitHub Release](https://github.com/soswow/blender-slide-tools/releases). Do not attach zips by hand unless Actions failed.
 
 ## Manual checks
 

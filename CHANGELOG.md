@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Slide Flatten: project the selection onto its best-fit plane (or an X/Y/Z lock plane) while vertices slide on rails.
 
 ### Changed
+- The add-on is named Slide Tools (sidebar, F3, extension id). Slide Rotate, Slide Scale, and Slide Flatten are the three operators.
 - Shift+Alt+R no longer starts Rotate immediately; pick Rotate from the pie (or Mesh → Transform).
 
 ### Fixed

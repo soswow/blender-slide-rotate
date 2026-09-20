@@ -72,7 +72,7 @@ Release ${VERSION}
 EOF
 )"
 
-git tag -a "$TAG" -m "Slide Rotate ${VERSION}"
+git tag -a "$TAG" -m "Slide Tools ${VERSION}"
 git push origin HEAD
 git push origin "$TAG"
 

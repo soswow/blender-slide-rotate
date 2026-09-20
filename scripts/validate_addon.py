@@ -13,7 +13,7 @@ import bpy
 
 def load_extension_module():
     extension_directory = Path(__file__).resolve().parents[1]
-    module_name = "slide_rotate"
+    module_name = "slide_tools"
     spec = importlib.util.spec_from_file_location(
         module_name,
         extension_directory / "__init__.py",
@@ -37,8 +37,8 @@ def _assert_keymap(extension) -> None:
 
 def _assert_face_interior_through_rails() -> None:
     """Interior vert on a subdivided face slides on borrowed through-rails around X."""
-    mesh = bpy.data.meshes.new("slide_rotate_interior")
-    obj = bpy.data.objects.new("slide_rotate_interior", mesh)
+    mesh = bpy.data.meshes.new("slide_tools_interior")
+    obj = bpy.data.objects.new("slide_tools_interior", mesh)
     bpy.context.collection.objects.link(obj)
     bpy.context.view_layer.objects.active = obj
     obj.select_set(True)
@@ -75,7 +75,7 @@ def _assert_face_interior_through_rails() -> None:
         vert.select = abs(vert.co.y - 1.0) < 1e-8
     bmesh.update_edit_mesh(mesh)
 
-    bpy.ops.mesh.slide_rotate(
+    bpy.ops.mesh.slide_tools(
         angle=math.radians(20.0),
         extend_rails=True,
         lock_letter="X",
@@ -116,7 +116,7 @@ def _assert_scale_along_radial_rails() -> None:
         vert.select = abs(abs(vert.co.x) - 1.0) < 1e-8
     bmesh.update_edit_mesh(mesh)
 
-    bpy.ops.mesh.slide_rotate(mode="SCALE", factor=2.0, extend_rails=True)
+    bpy.ops.mesh.slide_tools(mode="SCALE", factor=2.0, extend_rails=True)
     edit_mesh = bmesh.from_edit_mesh(mesh)
     edit_mesh.verts.ensure_lookup_table()
     xs = sorted(float(vert.co.x) for vert in edit_mesh.verts if vert.select)
@@ -151,7 +151,7 @@ def _assert_flatten_along_normal_rails() -> None:
         vert.select = abs(vert.co.z - 2.0) < 1e-8
     bmesh.update_edit_mesh(mesh)
 
-    bpy.ops.mesh.slide_rotate(
+    bpy.ops.mesh.slide_tools(
         mode="FLATTEN",
         factor=1.0,
         extend_rails=True,
@@ -170,8 +170,8 @@ def _assert_flatten_along_normal_rails() -> None:
 
 
 def _build_loop_with_rails() -> bpy.types.Object:
-    mesh = bpy.data.meshes.new("slide_rotate_probe")
-    obj = bpy.data.objects.new("slide_rotate_probe", mesh)
+    mesh = bpy.data.meshes.new("slide_tools_probe")
+    obj = bpy.data.objects.new("slide_tools_probe", mesh)
     bpy.context.collection.objects.link(obj)
     bpy.context.view_layer.objects.active = obj
     obj.select_set(True)
@@ -199,20 +199,20 @@ def main() -> None:
         extension.register()
         registered = True
         _assert_keymap(extension)
-        from slide_rotate.core.input import modal_status_hints
-        from slide_rotate.ui import operators as operators_module
-        from slide_rotate.ui.operators import MESH_OT_slide_rotate, VIEW3D_MT_slide_pie
+        from slide_tools.core.input import modal_status_hints
+        from slide_tools.ui import operators as operators_module
+        from slide_tools.ui.operators import MESH_OT_slide_tools, VIEW3D_MT_slide_pie
 
         hints = modal_status_hints(True)
         assert ("EVENT_X",) in {icons for icons, _label in hints}
-        assert MESH_OT_slide_rotate._set_status_bar is not None
+        assert MESH_OT_slide_tools._set_status_bar is not None
         assert VIEW3D_MT_slide_pie.bl_idname == "VIEW3D_MT_slide_pie"
-        from slide_rotate.ui import overlay as overlay_module
+        from slide_tools.ui import overlay as overlay_module
 
         for menu, draw in operators_module._menu_draws():
             assert draw in menu.draw._draw_funcs
 
-        assert not MESH_OT_slide_rotate.poll(bpy.context)
+        assert not MESH_OT_slide_tools.poll(bpy.context)
 
         obj = _build_loop_with_rails()
         bpy.ops.object.mode_set(mode="EDIT")
@@ -228,9 +228,9 @@ def main() -> None:
         for vert in edit_mesh.verts:
             vert.select = abs(vert.co.y) < 1e-8
         bmesh.update_edit_mesh(mesh)
-        assert MESH_OT_slide_rotate.poll(bpy.context)
+        assert MESH_OT_slide_tools.poll(bpy.context)
 
-        bpy.ops.mesh.slide_rotate(angle=math.radians(20.0), extend_rails=True)
+        bpy.ops.mesh.slide_tools(angle=math.radians(20.0), extend_rails=True)
         edit_mesh = bmesh.from_edit_mesh(mesh)
         edit_mesh.verts.ensure_lookup_table()
         left_y = float(edit_mesh.verts[0].co.y)
@@ -247,16 +247,16 @@ def main() -> None:
         overlay_module.remove_draw_handler()
 
         bpy.ops.object.mode_set(mode="OBJECT")
-        assert not MESH_OT_slide_rotate.poll(bpy.context)
+        assert not MESH_OT_slide_tools.poll(bpy.context)
 
         _assert_face_interior_through_rails()
-        assert not MESH_OT_slide_rotate.poll(bpy.context)
+        assert not MESH_OT_slide_tools.poll(bpy.context)
 
         _assert_scale_along_radial_rails()
-        assert not MESH_OT_slide_rotate.poll(bpy.context)
+        assert not MESH_OT_slide_tools.poll(bpy.context)
 
         _assert_flatten_along_normal_rails()
-        assert not MESH_OT_slide_rotate.poll(bpy.context)
+        assert not MESH_OT_slide_tools.poll(bpy.context)
 
         extension.unregister()
         registered = False
@@ -265,8 +265,8 @@ def main() -> None:
         registered = True
         _assert_keymap(extension)
         bpy.ops.object.mode_set(mode="EDIT")
-        assert MESH_OT_slide_rotate.poll(bpy.context)
-        print("Slide Rotate validate_addon: ok")
+        assert MESH_OT_slide_tools.poll(bpy.context)
+        print("Slide Tools validate_addon: ok")
     finally:
         if registered:
             extension.unregister()

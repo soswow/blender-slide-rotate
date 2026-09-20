@@ -53,7 +53,7 @@ jobs:
         run: |
           blender --factory-startup --command extension validate
           blender --factory-startup --command extension build
-          ls -lh slide_rotate-${{ steps.version.outputs.version }}*.zip
+          ls -lh slide_tools-${{ steps.version.outputs.version }}*.zip
 
       - name: Release notes
         run: |
@@ -65,7 +65,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "${{ steps.version.outputs.tag }}" \
-            slide_rotate-${{ steps.version.outputs.version }}*.zip \
-            --title "Slide Rotate ${{ steps.version.outputs.version }}" \
+            slide_tools-${{ steps.version.outputs.version }}*.zip \
+            --title "Slide Tools ${{ steps.version.outputs.version }}" \
             --notes-file "${RUNNER_TEMP}/release-notes.md" \
             --verify-tag
