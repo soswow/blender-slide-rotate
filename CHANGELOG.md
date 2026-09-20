@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Axis-locked Slide Scale (for example Y lock at 0) now reaches the pivot plane along each rail instead of stopping slightly short when the rail is tilted.
+- Loop vertices keep sliding on their connected edges; through-face rails are only borrowed when a vertex has no unselected neighbor (face interiors).
+- Rotate no longer snaps a vertex onto the pivot when its rail points at it; it eases along that edge instead.
 
 ## [0.1.1] - 2026-09-19
 

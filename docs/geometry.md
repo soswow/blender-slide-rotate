@@ -14,11 +14,13 @@ Each vertex is assigned a rail **once at invoke, and again if you lock X/Y/Z**. 
 
 ## Interior vertices
 
-Vertices sitting inside a subdivided face often have no 1-ring edge in the rotation direction. If every connected neighbor is a poor match for the rotational tangent, Slide Tools copies rails from the coplanar face island: edges that leave that surface (the through-edges the boundary already has). Those borrowed rails are scored the same way, so interior verts can slide with the face instead of crawling along in-face edges.
+Vertices sitting inside a fully selected subdivided face have no unselected 1-ring edge. Slide Tools then copies rails from the coplanar face island: edges that leave that surface (the through-edges the boundary already has). Those borrowed rails are scored the same way, so interior verts can slide with the face.
+
+If a vertex still has an outgoing edge to an unselected neighbor, that edge is the rail — even when it is a poor match for the rotational tangent. That keeps a loop sliding on existing edges when some verts sit in the pivot's lock-axis plane (the tangent is then perpendicular to the loop rails).
 
 ## Solvers
 
-**Rotate** intersects the rotated radial line with the rail in the current rotation plane (view axis by default), then applies that parameter on the real 3D rail. If the intersection is parallel, near the pivot, or numerically explosive, it falls back to projecting the unconstrained rotated point onto the rail.
+**Rotate** intersects the rotated radial line with the rail in the current rotation plane (view axis by default), then applies that parameter on the real 3D rail. If the intersection is parallel, the rail runs through the pivot in that plane (polar would snap onto the pivot), or the hit is numerically explosive, it falls back to projecting the unconstrained rotated point onto the rail. That fallback eases along the edge (`cos` of the angle) instead of jumping.
 
 **Scale** projects the unconstrained native-S pose (uniform from the pivot) onto the rail. With X/Y/Z lock, it instead slides each vertex along its rail until the locked coordinate matches native S — so Y-lock at scale 0 lands every vertex on the pivot's Y, even if the rail is slightly tilted.
 

@@ -40,9 +40,6 @@ NEAR_PIVOT_EPS = 1e-8
 MIN_EDGE_LENGTH = 1e-8
 # Treat two outgoing rails as one bidirectional line when aligned this closely.
 COLINEAR_DOT = 0.999
-# Physical 1-ring rails below this alignment may be replaced by borrowed
-# through-face rails (face-interior verts whose only edges lie in the face).
-WEAK_RAIL_SCORE = 0.5
 # Extreme intersections are treated as unstable and fall back to projection.
 MAX_ABS_T = 1.0e6
 
@@ -269,6 +266,14 @@ def solve_rail_parameter(
         dot(direction_projected, first),
         dot(direction_projected, second),
     )
+    dir_len_sq = direction_2d[0] * direction_2d[0] + direction_2d[1] * direction_2d[1]
+    if dir_len_sq <= PARALLEL_EPS * PARALLEL_EPS:
+        return fallback_t, True
+    # Radial rail: the line goes through the pivot, so every polar hit is the
+    # pivot. Project unconstrained R onto the rail instead of snapping.
+    cross_origin = point_2d[0] * direction_2d[1] - point_2d[1] * direction_2d[0]
+    if cross_origin * cross_origin <= NEAR_PIVOT_EPS * dir_len_sq:
+        return fallback_t, True
     cross_target = direction_2d[0] * target_2d[1] - direction_2d[1] * target_2d[0]
     if abs(cross_target) < PARALLEL_EPS:
         return fallback_t, True
@@ -560,18 +565,23 @@ def choose_rail(
     mouse moves.
 
     ``borrowed_others`` are extra endpoints copied from coplanar face-island
-    edges that leave the surface. Face-interior vertices have no 1-ring edge
-    through the volume; those borrowed points supply that missing rail when
-    every physical neighbor is a poor match for the guide direction.
+    edges that leave the surface. They are used only when the vertex has no
+    unselected 1-ring neighbor (typical face-interior: every linked vert is
+    also selected). Existing outgoing edges always win, even if they score
+    poorly against the rotational tangent — otherwise a loop vertex that
+    happens to sit on the pivot's lock-axis plane would slide on a phantom
+    through-rail instead of its real edges.
     """
     guide = rail_score_direction(pivot, vertex_world, axis, mode, axis_locked)
-    rail, score = _best_rail(_rails_from_others(vertex_world, others), guide)
-    if borrowed_others and score < WEAK_RAIL_SCORE:
-        borrowed_rail, borrowed_score = _best_rail(
+    rail, _score = _best_rail(_rails_from_others(vertex_world, others), guide)
+    if rail is not None:
+        return rail
+    if borrowed_others:
+        borrowed_rail, _borrowed_score = _best_rail(
             _rails_from_others(vertex_world, borrowed_others),
             guide,
         )
-        if borrowed_rail is not None and borrowed_score > score + 1e-9:
+        if borrowed_rail is not None:
             return borrowed_rail
     return rail
 

@@ -4,6 +4,7 @@
 - Scale: select verts with outgoing edges away from the pivot, Shift+Alt+R, tap S; they slide along those radials.
 - Flatten: select a wavy loop with outgoing edges, Shift+Alt+R, tap F; verts slide onto the best-fit plane. Drag toward the pivot to ease off. Press Z to flatten onto the pivot's XY plane instead.
 - Subdivided face: select the face including interior verts; they follow the same through-rails as the boundary instead of in-face edges.
+- Loop with Active Element: verts that sit in the lock-axis plane of the active vert still slide on their own outgoing edges, not through the face.
 - Right/Front/Top ortho: free rotation is around the view axis (same as `R`).
 - Press `X` / `Y` / `Z` while dragging; header follows View → orientation → Global/Local, and a thick anti-aliased axis line in native-R colors appears through the pivot.
 - Axis lock still follows the mouse after orbiting 180° around the model (same as native `R`).

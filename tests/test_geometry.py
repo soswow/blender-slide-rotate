@@ -116,6 +116,30 @@ def test_world_x_axis_rotation_uses_yz_plane() -> None:
     assert abs(point[2] - 1.0) < 1e-6
 
 
+def test_radial_rail_projects_instead_of_snapping_to_pivot() -> None:
+    """Rail through the pivot cannot change heading; project unconstrained R onto it.
+
+    Small angles must stay near the start pose (cosine), not jump to the pivot.
+    """
+    pivot = (0.0, 0.0, 0.0)
+    axis = (0.0, 0.0, 1.0)
+    original = (0.0, 1.0, 0.4)
+    rail = Rail(origin=original, direction=(0.0, 1.0, 0.0), t_min=-5.0, t_max=5.0, merged=True)
+    small = math.radians(10.0)
+    t_small, fallback_small = solve_rail_parameter(pivot, axis, small, original, rail, 0.0)
+    assert fallback_small
+    assert abs(t_small - (math.cos(small) - 1.0)) < 1e-9
+    point_small = (rail.origin[0], rail.origin[1] + t_small * rail.direction[1], rail.origin[2])
+    assert abs(point_small[0]) < 1e-9
+    assert abs(point_small[1] - math.cos(small)) < 1e-9
+    assert abs(point_small[1] - 1.0) < 0.02
+    assert abs(point_small[1]) > 0.9
+
+    t_quarter, fallback_quarter = solve_rail_parameter(pivot, axis, math.pi / 2.0, original, rail, 0.0)
+    assert fallback_quarter
+    assert abs(t_quarter - (0.0 - 1.0)) < 1e-9
+
+
 def test_parallel_radial_falls_back_to_projection() -> None:
     pivot = (0.0, 0.0, 0.0)
     axis = (0.0, 0.0, 1.0)
@@ -182,13 +206,12 @@ def test_face_interior_inplane_neighbors_miss_through_rotation() -> None:
 
 
 def test_face_interior_borrowed_through_rail_wins() -> None:
-    """Copied volume-through edges become the rail when 1-ring neighbors lie in the face."""
+    """No unselected 1-ring: copied volume-through edges become the rail."""
     vertex = (0.0, 0.0, 1.0)
-    others = [(1.0, 0.0, 1.0), (-1.0, 0.0, 1.0), (0.0, 0.0, 2.0), (0.0, 0.0, 0.0)]
     borrowed = [(0.0, -2.0, 1.0)]
     pivot = (0.0, 0.0, 0.0)
     axis = (1.0, 0.0, 0.0)
-    rail = choose_rail(vertex, others, pivot, axis, borrowed_others=borrowed)
+    rail = choose_rail(vertex, [], pivot, axis, borrowed_others=borrowed)
     assert rail is not None
     assert almost_equal(rail.direction, (0.0, -1.0, 0.0)) or almost_equal(
         rail.direction,
@@ -198,16 +221,44 @@ def test_face_interior_borrowed_through_rail_wins() -> None:
 
 
 def test_borrowed_through_rail_follows_axis() -> None:
-    """Physical in-face X wins around Y; borrowed through-Y wins around X."""
+    """Physical in-face X wins around Y; with no 1-ring, borrowed through-Y wins around X."""
     vertex = (0.0, 0.0, 1.0)
     others = [(1.0, 0.0, 1.0)]
     borrowed = [(0.0, -2.0, 1.0)]
     pivot = (0.0, 0.0, 0.0)
-    around_x = choose_rail(vertex, others, pivot, (1.0, 0.0, 0.0), borrowed_others=borrowed)
+    around_x = choose_rail(vertex, [], pivot, (1.0, 0.0, 0.0), borrowed_others=borrowed)
     around_y = choose_rail(vertex, others, pivot, (0.0, 1.0, 0.0), borrowed_others=borrowed)
     assert around_x is not None and around_y is not None
     assert abs(around_x.direction[1]) > 0.9
     assert abs(around_y.direction[0]) > 0.9
+
+
+def test_loop_vert_keeps_physical_rail_when_tangent_is_orthogonal() -> None:
+    """Loop vert sharing the pivot's X: Z-rotation tangent is X, 1-ring is Y.
+
+    Through-X edges copied from the face island must not replace the real Y rails.
+    """
+    vertex = (0.0, -1.13, 0.77)
+    others = [(0.0, -2.0, 0.67), (0.0, 0.13, 0.91)]
+    borrowed = [(-1.0, -1.13, 0.77)]
+    pivot = (0.0, -0.92, 0.26)
+    axis = (0.0, 0.0, 1.0)
+    rail = choose_rail(vertex, others, pivot, axis, borrowed_others=borrowed)
+    assert rail is not None
+    assert abs(rail.direction[1]) > 0.9
+    assert abs(rail.direction[0]) < 0.1
+
+
+def test_inface_1ring_not_replaced_by_better_borrowed() -> None:
+    """An unselected in-face neighbor is still a real edge; do not steal a through-rail."""
+    vertex = (0.0, 0.0, 1.0)
+    others = [(1.0, 0.0, 1.0), (-1.0, 0.0, 1.0), (0.0, 0.0, 2.0), (0.0, 0.0, 0.0)]
+    borrowed = [(0.0, -2.0, 1.0)]
+    pivot = (0.0, 0.0, 0.0)
+    axis = (1.0, 0.0, 0.0)
+    rail = choose_rail(vertex, others, pivot, axis, borrowed_others=borrowed)
+    assert rail is not None
+    assert abs(rail.direction[1]) < 0.5
 
 
 def test_strong_physical_rail_ignores_borrowed() -> None:
@@ -250,7 +301,7 @@ def test_face_interior_borrowed_state_slides_with_theta() -> None:
         index=0,
         local=original,
         world=original,
-        neighbor_worlds=[(1.0, 0.0, 1.0), (0.0, 0.0, 0.0)],
+        neighbor_worlds=[],
         pivot=pivot,
         axis=axis,
         borrowed_worlds=[(0.0, -2.0, 1.0)],

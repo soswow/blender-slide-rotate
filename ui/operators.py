@@ -86,9 +86,10 @@ def _borrowed_rail_worlds(
 ) -> list[Vec3]:
     """Copy leaving-edge offsets from the coplanar face island onto ``vert``.
 
-    A vertex sitting inside a subdivided face has only in-face neighbors. The
-    boundary of that same planar region usually has edges going through the
-    volume; those directions are the rails the interior vertex is missing.
+    A vertex sitting inside a fully selected subdivided face has no unselected
+    1-ring neighbor. The boundary of that same planar region usually has edges
+    going through the volume; those directions are the rails the interior
+    vertex is missing. Loop vertices keep their real outgoing edges.
     """
     if not vert.link_faces:
         return []
