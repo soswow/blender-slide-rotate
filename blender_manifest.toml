@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "slide_tools"
-version = "0.2.0"
+version = "0.3.0"
 name = "Slide Tools"
 tagline = "Rotate, scale, flatten, or curve a mesh selection while vertices slide on connected edges"
 maintainer = "Aleksandr 'Sasha' Motsjonov"

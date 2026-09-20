@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-20
+
 ### Added
 - Slide Curve: slide a selected loop or path toward a fitted curve (open: pinned polynomial; closed: Fourier harmonics) while vertices stay on rails. `[` `]` or mouse wheel changes Order; X/Y/Z fits in that plane.
 
